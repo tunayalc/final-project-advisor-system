@@ -22,6 +22,9 @@ router.post('/run-assignment', authenticate, authorize('admin'), (req, res) => {
         res.json(result);
     } catch (err) {
         console.error(err);
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            return res.status(409).json({ error: 'Bu bölüm zaten kayıtlı.' });
+        }
         res.status(500).json({ error: 'Sunucu hatası.' });
     }
 });
@@ -219,6 +222,39 @@ router.get('/departments', authenticate, authorize('admin'), (req, res) => {
         const db = getDb();
         const departments = db.prepare('SELECT id, name FROM departments ORDER BY name ASC').all();
         res.json(departments);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Sunucu hatası.' });
+    }
+});
+
+router.post('/departments', authenticate, authorize('admin'), (req, res) => {
+    try {
+        const db = getDb();
+        const normalizedName = String(req.body.name || '').trim().replace(/\s+/g, ' ');
+
+        if (!normalizedName) {
+            return res.status(400).json({ error: 'Bölüm adı zorunludur.' });
+        }
+
+        if (normalizedName.length < 3) {
+            return res.status(400).json({ error: 'Bölüm adı en az 3 karakter olmalıdır.' });
+        }
+
+        const existing = db.prepare('SELECT id FROM departments WHERE LOWER(name) = LOWER(?)').get(normalizedName);
+        if (existing) {
+            return res.status(409).json({ error: 'Bu bölüm zaten kayıtlı.' });
+        }
+
+        const result = db.prepare('INSERT INTO departments (name) VALUES (?)').run(normalizedName);
+        const department = db.prepare('SELECT id, name FROM departments WHERE id = ?').get(result.lastInsertRowid);
+        db.prepare('INSERT INTO assignment_logs (action, details) VALUES (?, ?)')
+            .run('ADMIN_CREATE_DEPARTMENT', `${normalizedName} bölümü yönetici tarafından oluşturuldu.`);
+
+        res.status(201).json({
+            message: `${normalizedName} bölümü eklendi.`,
+            department,
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Sunucu hatası.' });

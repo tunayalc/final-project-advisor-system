@@ -58,16 +58,26 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - reddedilen ogrenci tercih/teklif/atama akislarina dahil edilmez
   - admin islemi `ADMIN_REVIEW_STUDENT` logu olusturur
 
-### 6. Admin panelinden yalnizca danisman eklenir
+### 6. Admin panelinden bolum eklenir
+
+- Admin panelindeki `Bolum ekle` formu kullanilir.
+- Yeni bolum adi girilir ve kaydedilir.
+- Beklenen sonuc:
+  - bolum `departments` tablosuna eklenir
+  - yeni bolum public ogrenci kayit listesinda gorunur
+  - yeni bolum danisman ekleme formunda secilebilir
+  - ayni bolum adi tekrar eklenemez
+
+### 7. Admin panelinden yalnizca danisman eklenir
 
 - Admin panelindeki kayit yonetimi alani kontrol edilir.
 - Beklenen sonuc:
   - `Danisman ekle` formu vardir
   - admin panelinde `Ogrenci ekle` formu yoktur
   - `/admin/users` endpointi olusturdugu kullaniciyi `hoca` roluyle kaydeder
-  - danisman secilen bolum altinda olusturulur
+  - danisman adminin sectigi bolum altinda olusturulur
 
-### 7. Approved ogrenci tercih kaydeder
+### 8. Approved ogrenci tercih kaydeder
 
 - Approved ogrenci panelinde aktif danisman havuzu acilir.
 - Ogrenci kendi bolumundeki aktif danismanlari tercih listesine ekler.
@@ -77,7 +87,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - sayfa yenilendiginde tercih listesi korunur
   - `UPDATE_PREFERENCES` logu olusur
 
-### 8. Atanmis ogrenci tercih degistiremez
+### 9. Atanmis ogrenci tercih degistiremez
 
 - Approved ogrenci tercih kaydettikten sonra merkezi atama calistirilir.
 - Atanmis ogrenci tekrar tercih kaydetmeye calisir.
@@ -86,7 +96,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - tercih kaydetme endpointi 400 doner
   - mevcut atama korunur
 
-### 9. Puanli merkezi atama dogru calisir
+### 10. Puanli merkezi atama dogru calisir
 
 - Onayli ve atanmamis ogrenciler icin tercihler hazirlanir.
 - Admin `Kontenjanlari hesapla` ve `Atamayi baslat` islemlerini calistirir.
@@ -98,7 +108,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - siralama: toplam puan, GANO, tercih sirasi, ogrenci ID, danisman ID
   - `SCORE_ASSIGN` logunda puan, GANO katkisi, tercih katkisi ve tercih sirasi gorunur
 
-### 10. Tercih disi fallback atamasi
+### 11. Tercih disi fallback atamasi
 
 - Approved ogrencinin tercihleri dolu veya gecersiz kalacak sekilde kontenjan senaryosu hazirlanir.
 - Ayni bolumde bos kontenjani olan aktif danisman bulunur.
@@ -107,7 +117,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - `FALLBACK_ASSIGN` logu olusur
   - bolum disi veya pasif danisman fallback hedefi olmaz
 
-### 11. Danisman yalnizca uygun ogrencileri gorur
+### 12. Danisman yalnizca uygun ogrencileri gorur
 
 - Pending, rejected, approved ve atanmis ogrenciler ayni test ortaminda hazirlanir.
 - Danisman panelinde minimum GANO filtresi uygulanir.
@@ -117,7 +127,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - danisman yalnizca kendi bolumundeki ogrencilere teklif gonderebilir
   - pending/rejected ogrenciye teklif gonderme denemesi reddedilir
 
-### 12. Hoca aktif / pasif durumu
+### 13. Hoca aktif / pasif durumu
 
 - Admin bir danismani pasife alir.
 - Beklenen sonuc:
@@ -126,7 +136,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - pasif danisman merkezi atama kontenjani hesaplamasina aktif hedef olarak girmez
   - mevcut atamalar sistemde korunur
 
-### 13. Manuel danisman degisikligi
+### 14. Manuel danisman degisikligi
 
 - Admin approved ogrenciyi ayni bolumdeki aktif danismana manuel atar.
 - Beklenen sonuc:
@@ -135,7 +145,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - pending veya rejected ogrenci manuel atanamaz
   - bolum disi veya pasif danismana manuel atama reddedilir
 
-### 14. Kullanici silme
+### 15. Kullanici silme
 
 - Admin bir ogrenci veya danisman kaydini siler.
 - Beklenen sonuc:
@@ -144,7 +154,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - atamali ogrenci silindiyse danisman kotasi tutarli kalir
   - danisman silinecekse bagli atama etkileri kontrollu islenir
 
-### 15. Sifre degistirme
+### 16. Sifre degistirme
 
 - Kullanici mevcut sifresini girerek yeni sifre belirler.
 - Beklenen sonuc:
@@ -152,7 +162,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - yeni sifre hashlenerek saklanir
   - hatali mevcut sifre ile islem reddedilir
 
-### 16. Cok bolum tutarliligi
+### 17. Cok bolum tutarliligi
 
 - Departman listesi ve paneller kontrol edilir.
 - Beklenen sonuc:
@@ -165,7 +175,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
 
 Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node docs/assignment_case_runner.cjs --all` komutuyla kosulur.
 
-### 17. Test Case 1: Yogun talep goren iki hoca
+### 18. Test Case 1: Yogun talep goren iki hoca
 
 - YZVM bolumunde 4 hoca ve 22 approved ogrenci vardir.
 - En cok talep goren 2 hocayi 7'ser ogrenci birinci tercih yapar.
@@ -176,7 +186,7 @@ Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node doc
   - kota asimi ve bolum disi atama olmaz
   - her atama icin puan logu olusur
 
-### 18. Test Case 2: Happy path esit tercih
+### 19. Test Case 2: Happy path esit tercih
 
 - YZVM bolumunde 4 hoca ve 40 approved ogrenci vardir.
 - Her hocayi 10 ogrenci birinci tercih yapar.
@@ -184,7 +194,7 @@ Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node doc
   - dagilim `10/10/10/10` olur
   - tum ogrenciler tercih uzerinden atanir
 
-### 19. Test Case 3: Bizim bolum 40 kontenjan
+### 20. Test Case 3: Bizim bolum 40 kontenjan
 
 - YZVM bolumunde 4 hoca ve 40 approved ogrenci vardir.
 - Tercihler dengesiz dagilir.
@@ -193,7 +203,7 @@ Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node doc
   - dagilim `10/10/10/10` olur
   - puanli siralama ve kota sinirlari korunur
 
-### 20. Test Case 4: Bilgisayar Muhendisligi 110 ogrenci
+### 21. Test Case 4: Bilgisayar Muhendisligi 110 ogrenci
 
 - Bilgisayar Muhendisligi bolumunde 10 hoca ve 110 approved ogrenci vardir.
 - Tercihler populer hoca yogunlugu ve normal dagilim karisimi icerir.
@@ -202,7 +212,7 @@ Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node doc
   - 110 ogrencinin tamami atanir
   - bolum disi atama olusmaz
 
-### 21. Test Case 5: Kapasite benchmark
+### 22. Test Case 5: Kapasite benchmark
 
 - `05_capacity_100`, `05_capacity_500`, `05_capacity_1000`, `05_capacity_5000` datasetleri kosulur.
 - Beklenen sonuc:
@@ -211,7 +221,7 @@ Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node doc
   - kontenjan asimi olmaz
   - sure raporlanir; 5000 ogrenci icin 60 saniye ustu sonuc uyari sayilir
 
-### 22. Ek aykiri durum datasetleri
+### 23. Ek aykiri durum datasetleri
 
 - Pending/rejected ogrenciler atamaya dahil edilmez.
 - Pasif hoca tercihte olsa bile kullanilmaz.
@@ -226,6 +236,7 @@ Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node doc
 - `GANO` ve `GABNO` okuma varyasyonlari dogru mu?
 - Pending ogrenci tercih, danisman listesi, teklif ve atama akislarindan engelleniyor mu?
 - Admin onayindan sonra ogrenci tercih kaydedebiliyor mu?
+- Admin panelinden yeni bolum eklenebiliyor mu?
 - Admin panelinde ogrenci ekleme kaldirilmis, danisman ekleme korunmus mu?
 - Atanmis ogrenci tercih degistiremiyor mu?
 - Merkezi atama `%80 GANO + %20 tercih sirasi` puanini uyguluyor mu?

@@ -319,11 +319,22 @@ def run_scenarios(temp_dir):
         "admin ve danisman seed hesaplari giris yapti; ogrenci tokeni admin endpointinden 403 aldi; public bolum listesi geldi.",
     )
 
+    new_department_name = f"Runtime Bolum {stamp}"
+    create_department = api("POST", "/admin/departments", token=admin_token, json={"name": new_department_name})
+    public_departments_after_create = api("GET", "/auth/departments")
+    expect_status(create_department, 201, "create department")
+    expect_status(public_departments_after_create, 200, "public departments after create")
+    record(
+        "2. Admin bolum olusturabilir",
+        any(department["name"] == new_department_name for department in public_departments_after_create.json()),
+        "admin yeni bolum olusturdu; bolum public kayit listesine de yansidi.",
+    )
+
     profile_response = api("GET", "/students/me", token=pending_token)
     expect_status(profile_response, 200, "pending student profile")
     pending_profile = profile_response.json()
     record(
-        "2. GABNO transkript kaydi pending ogrenci olusturur",
+        "3. GABNO transkript kaydi pending ogrenci olusturur",
         pending_profile["approval_status"] == "pending" and abs(float(pending_profile["gano"]) - 3.48) < 0.001,
         f"GABNO okundu, GANO={pending_profile['gano']}, durum={pending_profile['approval_status']}.",
     )
@@ -331,7 +342,7 @@ def run_scenarios(temp_dir):
     faculty_list_pending = api("GET", "/students/faculty-list", token=pending_token)
     save_pending = api("POST", "/students/preferences", token=pending_token, json={"preferences": [1]})
     record(
-        "3. Pending ogrenci tercih akislarindan engellenir",
+        "4. Pending ogrenci tercih akislarindan engellenir",
         faculty_list_pending.status_code == 403 and save_pending.status_code == 403,
         "pending ogrenci danisman listesini alamadi ve tercih kaydedemedi.",
     )
@@ -342,7 +353,7 @@ def run_scenarios(temp_dir):
     invalid_response = attempt_register(temp_dir, f"runtime.invalid.{stamp}@ankara.edu.tr", "Runtime Invalid", "GANO", "4.50")
     gano_student = get_student_by_email(gano_email)
     record(
-        "4. GANO/GABNO ve gecersiz transkript varyasyonlari",
+        "5. GANO/GABNO ve gecersiz transkript varyasyonlari",
         gano_response.status_code == 201
         and gano_student is not None
         and abs(float(gano_student["gano"]) - 3.42) < 0.001
@@ -365,7 +376,7 @@ def run_scenarios(temp_dir):
     expect_status(save_approved, 200, "save approved preferences")
     expect_status(preferences_response, 200, "read approved preferences")
     record(
-        "5. Admin onayi sonrasi ogrenci tercih yapabilir",
+        "6. Admin onayi sonrasi ogrenci tercih yapabilir",
         approved_profile.json()["approval_status"] == "approved"
         and len(faculty_list) > 0
         and len(preferences_response.json()) == len(preference_ids),
@@ -381,7 +392,7 @@ def run_scenarios(temp_dir):
     expect_status(bm_faculty_response, 200, "bm faculty list")
     bm_faculty_names = {faculty["full_name"] for faculty in bm_faculty_response.json()}
     record(
-        "6. Secilen bolum ogrencinin danisman havuzunu izole eder",
+        "7. Secilen bolum ogrencinin danisman havuzunu izole eder",
         len(bm_faculty_names) == 10
         and "Prof. Dr. Cem Arslan" in bm_faculty_names
         and "Prof. Dr. Ahmet Yılmaz" not in bm_faculty_names,
@@ -406,7 +417,7 @@ def run_scenarios(temp_dir):
         None,
     )
     record(
-        "7. Puanli atama ve atanmis ogrenci kilidi",
+        "8. Puanli atama ve atanmis ogrenci kilidi",
         assigned_profile.json()["is_assigned"] == 1 and resave_assigned.status_code == 400 and score_log is not None,
         "atama calisti; SCORE_ASSIGN puan logu olustu ve atanmis ogrenci tercih degistiremedi.",
     )
@@ -435,7 +446,7 @@ def run_scenarios(temp_dir):
     rejected_student = get_student_by_email(rejected_email)
     rejected_invite = api("POST", "/faculty/invite", token=faculty_token, json={"student_id": rejected_student["id"]})
     record(
-        "8. Danisman yalnizca onayli ogrencilerle calisir",
+        "9. Danisman yalnizca onayli ogrencilerle calisir",
         rejected_name not in visible_names
         and hidden_pending_name not in visible_names
         and rejected_invite.status_code == 400
@@ -460,7 +471,7 @@ def run_scenarios(temp_dir):
     department_names = {department["name"] for department in departments}
     created_user = db_one("SELECT role FROM users WHERE email = ?", (created_faculty_email,))
     record(
-        "9. Admin yalnizca danisman olusturur ve ana bolumler korunur",
+        "10. Admin yalnizca danisman olusturur ve ana bolumler korunur",
         create_faculty.status_code == 201
         and created_user["role"] == "hoca"
         and REQUIRED_DEPARTMENTS.issubset(department_names),
@@ -481,7 +492,7 @@ def run_scenarios(temp_dir):
     )
     relogin = api("POST", "/auth/login", json={"email": "ahmet.yilmaz@ankara.edu.tr", "password": "YeniSifre123!"})
     record(
-        "10. Sifre degistirme akisi",
+        "11. Sifre degistirme akisi",
         wrong_password.status_code == 401 and right_password.status_code == 200 and relogin.status_code == 200,
         "hatali mevcut sifre reddedildi; dogru sifreyle yeni sifre kaydedildi ve tekrar giris yapildi.",
     )

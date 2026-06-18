@@ -31,7 +31,7 @@ Dogrudan danisman teklifi kabul edilirse ogrenci merkezi yerlestirme sirasindan 
 - Rejected ogrenci giris yapabilir fakat tercih/teklif/atama akislarina dahil edilmez.
 - Approved ogrenci kendi bolumundeki aktif danismanlari gorur ve tercih listesi olusturabilir.
 - Atanmis ogrenci tercih listesini degistiremez.
-- Admin panelinden ogrenci olusturulmaz; admin yalnizca danisman olusturur ve ogrenci
+- Admin panelinden ogrenci olusturulmaz; admin bolum ve danisman olusturur, ogrenci
   basvurularini onaylar, reddeder veya bilgilerini duzenler.
 - Danismanlar yalnizca kendi bolumlerindeki onayli ve atanmamis ogrencileri gorebilir.
 - Pasif danisman yeni teklif gonderemez ve merkezi atama havuzuna girmez.
@@ -239,6 +239,7 @@ sequenceDiagram
 - Veritabani uygulama acilisinda `schema.sql` ve `seed.sql` ile temiz ortamda olusturulabilir.
 - Seed verisi admin ve danismanlardan olusur; demo ogrenci hesabi bulunmaz.
 - Seed iki ana bolumu ve demo danismanlarini icerir; mevcut DB acilisinda eksik ana bolumler idempotent eklenir.
+- Admin panelinden eklenen bolumler public kayit formunda ve danisman olusturma formunda kullanilir.
 - Atama algoritmasi icin CSV test case datasetleri `docs/assignment_cases` altinda tutulur.
 - `node docs/assignment_case_runner.cjs --all` komutu ana ve aykiri atama senaryolarini gecici DB uzerinde kosar.
 - Gercek transkript dosyalari sistemde saklanmaz; PDF metni kayit sirasinda bellekte islenir.

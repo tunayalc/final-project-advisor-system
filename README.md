@@ -7,7 +7,7 @@ React, Node.js ve SQLite ile geliştirilmiş çok bölümlü danışman atama si
 - Öğrenci self-register akışı: ad soyad, e-posta, şifre, bölüm, giriş yılı ve transkript PDF.
 - PDF transkriptten metin tabanlı `GANO`/`GABNO` okuma.
 - Admin onayı bekleyen öğrenci durumu.
-- Admin panelinde danışman ekleme, öğrenci başvurusu onaylama/reddetme/düzenleme.
+- Admin panelinde bölüm ekleme, danışman ekleme, öğrenci başvurusu onaylama/reddetme/düzenleme.
 - Çok bölüm modeli: `Yapay Zeka ve Veri Mühendisliği` ve `Bilgisayar Mühendisliği`.
 - Danışman ve öğrenci listelerinde bölüm izolasyonu; bölüm dışı tercih, teklif ve atama yapılmaz.
 - Merkezi atamada açıklanabilir puanlama:
@@ -69,6 +69,7 @@ Başlangıçta öğrenci yoktur. Öğrenciler giriş ekranındaki `Öğrenci Kay
 ## Admin Akışı
 
 - Danışman ekler ve danışmanları aktif/pasif yapar.
+- Yeni bölüm açar; yeni öğrenciler ve danışmanlar bu bölüm listesi üzerinden bağlanır.
 - Öğrenci başvurularında ad soyad, e-posta, GANO ve giriş yılını düzenleyebilir.
 - Başvuruyu onaylar veya reddeder.
 - Kontenjanları hesaplar ve merkezi yerleştirmeyi çalıştırır.

@@ -143,12 +143,34 @@ test('admin can log in, manage quotas, and no longer sees student creation', asy
 
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole('heading', { name: 'Yerleştirme ve kullanıcı yönetimi' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bölüm ekle' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Danışman ekle' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Onay bekleyen kayıtlar' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Öğrenci ekle' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Kontenjanları hesapla' }).click();
   await expect(page.getByText(/Kontenjanlar güncellendi/i)).toBeVisible();
+});
+
+test('admin can create a new department', async ({ page }) => {
+  const uniqueId = Date.now();
+  const departmentName = `E2E Bölüm ${uniqueId}`;
+
+  await login(page, 'admin@ankara.edu.tr', 'admin123');
+  await expect(page).toHaveURL(/\/admin$/);
+
+  const departmentPanel = page.locator('section.panel', {
+    has: page.getByRole('heading', { name: 'Bölüm ekle' }),
+  });
+  await departmentPanel.getByLabel('Bölüm adı').fill(departmentName);
+  await departmentPanel.getByRole('button', { name: 'Bölüm ekle' }).click();
+  await expect(page.getByText(new RegExp(`${departmentName} bölümü eklendi`, 'i'))).toBeVisible();
+  await expect(departmentPanel.getByText(departmentName)).toBeVisible();
+
+  const createPanel = page.locator('section.panel', {
+    has: page.getByRole('heading', { name: 'Danışman ekle' }),
+  });
+  await createPanel.getByLabel('Bölüm').selectOption({ label: departmentName });
 });
 
 test('admin can create faculty under computer engineering department', async ({ page }) => {
