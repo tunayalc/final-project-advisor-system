@@ -11,7 +11,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'powershell -NoProfile -ExecutionPolicy Bypass -File e2e/start-backend.ps1',
+      command: 'node e2e/start-backend.mjs',
       port: 3000,
       reuseExistingServer: false,
       timeout: 120000,

@@ -5,9 +5,10 @@ import signal
 import socket
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import requests
@@ -15,11 +16,13 @@ import requests
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
-SOURCE_DB = BACKEND_DIR / "db" / "danisman_atama.db"
 
 BASE_URL = None
 DB_PATH = None
 results = []
+
+STUDENT_PASSWORD = "Temp1234!"
+DEPARTMENT_NAME = "Yapay Zeka ve Veri Mühendisliği"
 
 
 @dataclass
@@ -31,6 +34,59 @@ class ScenarioResult:
 
 def record(name, ok, details):
     results.append(ScenarioResult(name=name, status="PASS" if ok else "FAIL", details=details))
+
+
+def escape_pdf_text(value):
+    return str(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def make_pdf_bytes(lines):
+    text_ops = ["BT", "/F1 12 Tf", "72 760 Td"]
+    for line in lines:
+        text_ops.append(f"({escape_pdf_text(line)}) Tj")
+        text_ops.append("0 -18 Td")
+    text_ops.append("ET")
+    stream = "\n".join(text_ops).encode("latin-1", errors="replace")
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+    ]
+
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{index} 0 obj\n".encode("ascii"))
+        output.extend(obj)
+        output.extend(b"\nendobj\n")
+
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(output)
+
+
+def write_transcript(temp_dir, full_name, label="GABNO", gano="3,48", include_name=True):
+    lines = ["Ankara Universitesi Transkript Belgesi"]
+    if include_name:
+        lines.append(f"Ad Soyad: {full_name}")
+    if label:
+        lines.append(f"{label}: {gano}")
+    lines.append("Belge sonu")
+
+    path = Path(temp_dir) / f"transcript-{time.time_ns()}.pdf"
+    path.write_bytes(make_pdf_bytes(lines))
+    return path
 
 
 def find_free_port():
@@ -51,18 +107,7 @@ def wait_for_port(port, timeout=30):
 
 
 def prepare_temp_db(temp_dir):
-    if not SOURCE_DB.exists():
-        raise FileNotFoundError(f"Kaynak veritabani bulunamadi: {SOURCE_DB}")
-
-    target = Path(temp_dir) / "danisman_atama.runtime.db"
-    shutil.copy2(SOURCE_DB, target)
-
-    for suffix in ("-shm", "-wal"):
-        source_sidecar = SOURCE_DB.with_name(SOURCE_DB.name + suffix)
-        if source_sidecar.exists():
-            shutil.copy2(source_sidecar, Path(f"{target}{suffix}"))
-
-    return target
+    return Path(temp_dir) / "danisman_atama.runtime.db"
 
 
 def start_backend(temp_db):
@@ -70,16 +115,15 @@ def start_backend(temp_db):
     env = os.environ.copy()
     env["PORT"] = str(port)
     env["DB_PATH"] = str(temp_db)
+    env["JWT_SECRET"] = "runtime-verification-secret"
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     node_binary = shutil.which("node") or shutil.which("node.exe")
 
     if not node_binary:
         raise FileNotFoundError("Node.js yurutulebilir dosyasi bulunamadi.")
 
-    command = [node_binary, "server.js"]
-
     process = subprocess.Popen(
-        command,
+        [node_binary, "server.js"],
         cwd=BACKEND_DIR,
         env=env,
         stdout=subprocess.PIPE,
@@ -118,8 +162,6 @@ def stop_backend(process):
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
-
-    time.sleep(1)
 
 
 def db_connect():
@@ -175,26 +217,40 @@ def login(email, password):
     return data["token"], data["user"]
 
 
-def register_student(email, full_name, gano=3.0, department_id=1, entry_year=2023, password="Temp1234!"):
-    response = api(
-        "POST",
-        "/auth/register",
-        json={
-            "email": email,
-            "password": password,
-            "role": "ogrenci",
-            "full_name": full_name,
-            "gano": gano,
-            "department_id": department_id,
-            "entry_year": entry_year,
-        },
-    )
+def register_student(temp_dir, email, full_name, label="GABNO", gano="3,48", password=STUDENT_PASSWORD):
+    transcript_path = write_transcript(temp_dir, full_name, label=label, gano=gano)
+    with transcript_path.open("rb") as transcript:
+        response = api(
+            "POST",
+            "/auth/register",
+            data={
+                "full_name": full_name,
+                "email": email,
+                "password": password,
+                "entry_year": "2023",
+            },
+            files={
+                "transcript": ("transcript.pdf", transcript, "application/pdf"),
+            },
+        )
     expect_status(response, 201, f"register {email}")
     return response.json()
 
 
-def get_user(email):
-    return db_one("SELECT * FROM users WHERE email = ?", (email,))
+def attempt_register(temp_dir, email, full_name, label, gano):
+    transcript_path = write_transcript(temp_dir, full_name, label=label, gano=gano)
+    with transcript_path.open("rb") as transcript:
+        return api(
+            "POST",
+            "/auth/register",
+            data={
+                "full_name": full_name,
+                "email": email,
+                "password": STUDENT_PASSWORD,
+                "entry_year": "2023",
+            },
+            files={"transcript": ("transcript.pdf", transcript, "application/pdf")},
+        )
 
 
 def get_student_by_email(email):
@@ -209,241 +265,218 @@ def get_student_by_email(email):
     )
 
 
-def get_faculty_by_email(email):
-    return db_one(
-        """
-        SELECT f.*, u.email, u.full_name
-        FROM faculty f
-        JOIN users u ON u.id = f.user_id
-        WHERE u.email = ?
-        """,
-        (email,),
+def get_pending_application(admin_token, email):
+    response = api("GET", "/admin/student-applications", token=admin_token)
+    expect_status(response, 200, "student applications")
+    applications = response.json()
+    match = next((application for application in applications if application["email"] == email), None)
+    if not match:
+        raise AssertionError(f"{email} onay bekleyen listesinde bulunamadi")
+    return match
+
+
+def review_application(admin_token, application, status):
+    response = api(
+        "PATCH",
+        f"/admin/students/{application['id']}/review",
+        token=admin_token,
+        json={
+            "approval_status": status,
+            "full_name": application["full_name"],
+            "email": application["email"],
+            "gano": application["gano"],
+            "entry_year": application["entry_year"],
+        },
     )
+    expect_status(response, 200, f"review {application['email']} as {status}")
 
 
-def reset_for_assignment_test(active_faculty_ids, keep_student_ids):
-    placeholders = ",".join("?" for _ in keep_student_ids)
-    db_run(
-        f"""
-        UPDATE students
-        SET is_assigned = CASE WHEN id IN ({placeholders}) THEN 0 ELSE 1 END,
-            assigned_faculty_id = CASE WHEN id IN ({placeholders}) THEN NULL ELSE ? END
-        """,
-        tuple(keep_student_ids) + tuple(keep_student_ids) + (active_faculty_ids[0],),
-    )
-    db_run("UPDATE faculty SET current_quota = 0, base_quota = 0 WHERE is_active = 1")
-
-
-def run_scenarios():
-    admin_token, _ = login("admin@ankara.edu.tr", "admin123")
+def run_scenarios(temp_dir):
+    stamp = int(time.time())
+    admin_token, admin_user = login("admin@ankara.edu.tr", "admin123")
     faculty_token, faculty_user = login("ahmet.yilmaz@ankara.edu.tr", "hoca123")
-    student_token, student_user = login("ogrenci01@ankara.edu.tr", "ogrenci123")
 
-    unauthorized = api("GET", "/admin/get_dashboard_data", token=student_token)
+    pending_email = f"runtime.pending.{stamp}@ankara.edu.tr"
+    pending_name = f"Runtime Pending {stamp}"
+    pending_register = register_student(temp_dir, pending_email, pending_name, label="GABNO", gano="3,48")
+    pending_token = pending_register["token"]
+
+    unauthorized = api("GET", "/admin/get_dashboard_data", token=pending_token)
     record(
         "1. Rol bazli giris ve yetki kontrolu",
-        unauthorized.status_code == 403 and faculty_user["role"] == "hoca" and student_user["role"] == "ogrenci",
-        "admin, danisman ve ogrenci girisi dogrulandi; ogrenci tokeni ile admin endpointi 403 dondu.",
+        admin_user["role"] == "admin" and faculty_user["role"] == "hoca" and unauthorized.status_code == 403,
+        "admin ve danisman seed hesaplari giris yapti; ogrenci tokeni admin endpointinden 403 aldi.",
     )
 
-    temp_email = f"silinecek_{int(time.time())}@ankara.edu.tr"
-    register_student(temp_email, "Silinecek Test Ogrencisi", gano=3.67)
-    temp_user = get_user(temp_email)
-    temp_student = get_student_by_email(temp_email)
-    faculty_one = get_faculty_by_email("ahmet.yilmaz@ankara.edu.tr")
-    before_quota = db_one("SELECT current_quota FROM faculty WHERE id = ?", (faculty_one["id"],))["current_quota"]
-    response = api("POST", "/admin/force-assign", token=admin_token, json={"student_id": temp_student["id"], "faculty_id": faculty_one["id"]})
-    expect_status(response, 200, "force assign temp student")
-    delete_response = api("DELETE", f"/admin/users/{temp_user['id']}", token=admin_token)
-    expect_status(delete_response, 200, "delete temp student")
-    after_user = get_user(temp_email)
-    after_student = get_student_by_email(temp_email)
-    after_quota = db_one("SELECT current_quota FROM faculty WHERE id = ?", (faculty_one["id"],))["current_quota"]
+    profile_response = api("GET", "/students/me", token=pending_token)
+    expect_status(profile_response, 200, "pending student profile")
+    pending_profile = profile_response.json()
     record(
-        "2. Admin kullanici siler",
-        after_user is None and after_student is None and after_quota == before_quota,
-        "olusturulan ogrenci silindi; users ve students kaydi kalkti, onceki kota degeri geri alindi.",
+        "2. GABNO transkript kaydi pending ogrenci olusturur",
+        pending_profile["approval_status"] == "pending" and abs(float(pending_profile["gano"]) - 3.48) < 0.001,
+        f"GABNO okundu, GANO={pending_profile['gano']}, durum={pending_profile['approval_status']}.",
     )
 
-    last_student_emails = [f"ogrenci{str(index).zfill(2)}@ankara.edu.tr" for index in range(41, 51)]
-    for email in last_student_emails:
-        user_row = get_user(email)
-        response = api("DELETE", f"/admin/users/{user_row['id']}", token=admin_token)
-        expect_status(response, 200, f"delete {email}")
-    faculty_ten = get_faculty_by_email("selin.yildiz@ankara.edu.tr")
-    response = api("PATCH", f"/admin/faculty/{faculty_ten['id']}/status", token=admin_token, json={"is_active": False})
-    expect_status(response, 200, "deactivate faculty 10")
-    response = api("POST", "/admin/calculate-quotas", token=admin_token)
-    expect_status(response, 200, "calculate quotas after 40/9")
-    counts = db_one("SELECT COUNT(*) as c FROM students")
-    active_count = db_one("SELECT COUNT(*) as c FROM faculty WHERE is_active = 1")
-    zero_quota_active = db_one("SELECT COUNT(*) as c FROM faculty WHERE is_active = 1 AND base_quota = 0")
+    faculty_list_pending = api("GET", "/students/faculty-list", token=pending_token)
+    save_pending = api("POST", "/students/preferences", token=pending_token, json={"preferences": [1]})
     record(
-        "3. 40 ogrenci / 9 ogretim uyesi / 1 admin",
-        counts["c"] == 40 and active_count["c"] == 9 and zero_quota_active["c"] == 0,
-        "10 ogrenci silindi, 1 danisman pasife alindi, aktif 9 danisman icin sifir kotasiz dagitim olustu.",
+        "3. Pending ogrenci tercih akislarindan engellenir",
+        faculty_list_pending.status_code == 403 and save_pending.status_code == 403,
+        "pending ogrenci danisman listesini alamadi ve tercih kaydedemedi.",
     )
 
-    active_faculty_ids = [row["id"] for row in db_all("SELECT id FROM faculty WHERE is_active = 1 ORDER BY id")]
-
-    pref9_email = f"pref9_{int(time.time())}@ankara.edu.tr"
-    register_student(pref9_email, "Dokuzuncu Tercih Ogrencisi", gano=4.0)
-    pref9_student = get_student_by_email(pref9_email)
-    reset_for_assignment_test(active_faculty_ids, [pref9_student["id"]])
-    for faculty_id in active_faculty_ids[:8]:
-        db_run("UPDATE faculty SET base_quota = 1, current_quota = 1 WHERE id = ?", (faculty_id,))
-    db_run("UPDATE faculty SET base_quota = 1, current_quota = 0 WHERE id = ?", (active_faculty_ids[8],))
-    response = api("POST", "/students/preferences", token=login(pref9_email, "Temp1234!")[0], json={"preferences": active_faculty_ids})
-    expect_status(response, 200, "save 9 preferences")
-    response = api("POST", "/admin/run-assignment", token=admin_token)
-    expect_status(response, 200, "run assignment for 9th preference")
-    assigned_pref9 = db_one("SELECT assigned_faculty_id FROM students WHERE id = ?", (pref9_student["id"],))
+    gano_email = f"runtime.gano.{stamp}@ankara.edu.tr"
+    gano_response = attempt_register(temp_dir, gano_email, f"Runtime Gano {stamp}", "GANO", "3.42")
+    missing_response = attempt_register(temp_dir, f"runtime.missing.{stamp}@ankara.edu.tr", "Runtime Missing", "", "")
+    invalid_response = attempt_register(temp_dir, f"runtime.invalid.{stamp}@ankara.edu.tr", "Runtime Invalid", "GANO", "4.50")
+    gano_student = get_student_by_email(gano_email)
     record(
-        "4. 9. tercih atamasi",
-        assigned_pref9["assigned_faculty_id"] == active_faculty_ids[8],
-        f"ogrenci ilk 8 tercih doluyken {active_faculty_ids[8]} nolu 9. tercihe yerlesti.",
+        "4. GANO/GABNO ve gecersiz transkript varyasyonlari",
+        gano_response.status_code == 201
+        and gano_student is not None
+        and abs(float(gano_student["gano"]) - 3.42) < 0.001
+        and missing_response.status_code == 400
+        and invalid_response.status_code == 400,
+        "GANO nokta formati kabul edildi; eksik ve 0-4 disi GANO reddedildi.",
     )
 
-    demand_high_email = f"demand_high_{int(time.time())}@ankara.edu.tr"
-    demand_low_email = f"demand_low_{int(time.time()) + 1}@ankara.edu.tr"
-    register_student(demand_high_email, "Yuksek Gano Ogrencisi", gano=3.95)
-    register_student(demand_low_email, "Dusuk Gano Ogrencisi", gano=3.10)
-    high_student = get_student_by_email(demand_high_email)
-    low_student = get_student_by_email(demand_low_email)
-    reset_for_assignment_test(active_faculty_ids, [high_student["id"], low_student["id"]])
-    db_run("UPDATE faculty SET base_quota = 0, current_quota = 0 WHERE is_active = 1")
-    db_run("UPDATE faculty SET base_quota = 1, current_quota = 0 WHERE id = ?", (active_faculty_ids[0],))
-    db_run("UPDATE faculty SET base_quota = 1, current_quota = 0 WHERE id = ?", (active_faculty_ids[1],))
-    high_token, _ = login(demand_high_email, "Temp1234!")
-    low_token, _ = login(demand_low_email, "Temp1234!")
-    prefs = [active_faculty_ids[0], active_faculty_ids[1]]
-    expect_status(api("POST", "/students/preferences", token=high_token, json={"preferences": prefs}), 200, "save high demand prefs")
-    expect_status(api("POST", "/students/preferences", token=low_token, json={"preferences": prefs}), 200, "save low demand prefs")
-    expect_status(api("POST", "/admin/run-assignment", token=admin_token), 200, "run assignment for high demand")
-    high_assignment = db_one("SELECT assigned_faculty_id FROM students WHERE id = ?", (high_student["id"],))
-    low_assignment = db_one("SELECT assigned_faculty_id FROM students WHERE id = ?", (low_student["id"],))
+    pending_application = get_pending_application(admin_token, pending_email)
+    review_application(admin_token, pending_application, "approved")
+    approved_profile = api("GET", "/students/me", token=pending_token)
+    expect_status(approved_profile, 200, "approved student profile")
+
+    faculty_response = api("GET", "/students/faculty-list", token=pending_token)
+    expect_status(faculty_response, 200, "approved faculty list")
+    faculty_list = faculty_response.json()
+    preference_ids = [faculty["id"] for faculty in faculty_list[:4]]
+    save_approved = api("POST", "/students/preferences", token=pending_token, json={"preferences": preference_ids})
+    preferences_response = api("GET", "/students/preferences", token=pending_token)
+    expect_status(save_approved, 200, "save approved preferences")
+    expect_status(preferences_response, 200, "read approved preferences")
     record(
-        "5. Bir danismanin asiri tercih edilmesi",
-        high_assignment["assigned_faculty_id"] == active_faculty_ids[0] and low_assignment["assigned_faculty_id"] == active_faculty_ids[1],
-        "ayni ilk tercihi isteyen iki ogrenciden yuksek GANO olan ilk danismana yerlesti, digeri sonraki tercihe gecti.",
+        "5. Admin onayi sonrasi ogrenci tercih yapabilir",
+        approved_profile.json()["approval_status"] == "approved"
+        and len(faculty_list) > 0
+        and len(preferences_response.json()) == len(preference_ids),
+        "admin onayi verildi; ogrenci aktif danismanlari gordu ve tercihlerini kaydetti.",
     )
 
-    fallback_email = f"fallback_{int(time.time())}@ankara.edu.tr"
-    register_student(fallback_email, "Fallback Ogrencisi", gano=3.80)
-    fallback_student = get_student_by_email(fallback_email)
-    reset_for_assignment_test(active_faculty_ids, [fallback_student["id"]])
-    db_run("UPDATE faculty SET base_quota = 0, current_quota = 0 WHERE is_active = 1")
-    db_run("UPDATE faculty SET base_quota = 1, current_quota = 1 WHERE id = ?", (active_faculty_ids[0],))
-    db_run("UPDATE faculty SET base_quota = 1, current_quota = 1 WHERE id = ?", (active_faculty_ids[1],))
-    db_run("UPDATE faculty SET base_quota = 1, current_quota = 0 WHERE id = ?", (active_faculty_ids[2],))
-    fallback_token, _ = login(fallback_email, "Temp1234!")
-    expect_status(api("POST", "/students/preferences", token=fallback_token, json={"preferences": [active_faculty_ids[0], active_faculty_ids[1]]}), 200, "save fallback prefs")
-    expect_status(api("POST", "/admin/run-assignment", token=admin_token), 200, "run assignment for fallback")
-    fallback_assignment = db_one("SELECT assigned_faculty_id FROM students WHERE id = ?", (fallback_student["id"],))
+    quota_response = api("POST", "/admin/calculate-quotas", token=admin_token)
+    assignment_response = api("POST", "/admin/run-assignment", token=admin_token)
+    expect_status(quota_response, 200, "calculate quotas")
+    expect_status(assignment_response, 200, "run assignment")
+    assigned_profile = api("GET", "/students/me", token=pending_token)
+    expect_status(assigned_profile, 200, "assigned profile")
+    resave_assigned = api("POST", "/students/preferences", token=pending_token, json={"preferences": preference_ids})
+    logs_response = api("GET", "/admin/logs", token=admin_token)
+    expect_status(logs_response, 200, "admin logs")
+    score_log = next(
+        (
+            log
+            for log in logs_response.json()
+            if log["action"] == "SCORE_ASSIGN" and "Puan:" in (log["details"] or "")
+        ),
+        None,
+    )
     record(
-        "6. Bos kontenjan fallback senaryosu",
-        fallback_assignment["assigned_faculty_id"] == active_faculty_ids[2],
-        "tercihler dolu oldugu icin ogrenci tercih disi acik kontenjanli aktif danismana yerlesti.",
+        "6. Puanli atama ve atanmis ogrenci kilidi",
+        assigned_profile.json()["is_assigned"] == 1 and resave_assigned.status_code == 400 and score_log is not None,
+        "atama calisti; SCORE_ASSIGN puan logu olustu ve atanmis ogrenci tercih degistiremedi.",
     )
 
-    faculty_four = get_faculty_by_email("fatma.ozturk@ankara.edu.tr")
-    faculty_five = get_faculty_by_email("ali.celik@ankara.edu.tr")
-    reassignment_email = f"reassign_{int(time.time())}@ankara.edu.tr"
-    register_student(reassignment_email, "Yeniden Atama Ogrencisi", gano=3.25)
-    reassignment_student = get_student_by_email(reassignment_email)
-    expect_status(api("POST", "/admin/force-assign", token=admin_token, json={"student_id": reassignment_student["id"], "faculty_id": faculty_four["id"]}), 200, "assign student to faculty four")
-    expect_status(api("PATCH", f"/admin/faculty/{faculty_four['id']}/status", token=admin_token, json={"is_active": False}), 200, "deactivate faculty four")
-    faculty_four_token, _ = login("fatma.ozturk@ankara.edu.tr", "hoca123")
-    blocked_search = api("GET", "/faculty/students?minGano=3.0", token=faculty_four_token)
-    student_faculty_list = api("GET", "/students/faculty-list", token=student_token)
-    expect_status(student_faculty_list, 200, "student faculty list after deactivation")
-    list_ids = {item["id"] for item in student_faculty_list.json()}
-    response = api("POST", "/admin/calculate-quotas", token=admin_token)
-    expect_status(response, 200, "calculate quotas after deactivation")
-    quota_ids = {item["faculty_id"] for item in response.json()["quotas"]}
-    expect_status(api("POST", "/admin/force-assign", token=admin_token, json={"student_id": reassignment_student["id"], "faculty_id": faculty_five["id"]}), 200, "reassign student to faculty five")
-    reassigned = db_one("SELECT assigned_faculty_id FROM students WHERE id = ?", (reassignment_student["id"],))
-    latest_force_log = db_one("SELECT action FROM assignment_logs WHERE student_id = ? ORDER BY id DESC LIMIT 1", (reassignment_student["id"],))
-    faculty_four_quota = db_one("SELECT current_quota FROM faculty WHERE id = ?", (faculty_four["id"],))["current_quota"]
-    faculty_five_quota = db_one("SELECT current_quota FROM faculty WHERE id = ?", (faculty_five["id"],))["current_quota"]
-    record(
-        "7. Danisman donem ortasinda ayrilir",
-        blocked_search.status_code == 403 and faculty_four["id"] not in quota_ids,
-        "pasif danisman yeni arama yapamadi ve kontenjan hesaplamasina dahil edilmedi.",
+    rejected_email = f"runtime.rejected.{stamp}@ankara.edu.tr"
+    rejected_name = f"Runtime Rejected {stamp}"
+    register_student(temp_dir, rejected_email, rejected_name, label="GANO", gano="3.21")
+    rejected_application = get_pending_application(admin_token, rejected_email)
+    review_application(admin_token, rejected_application, "rejected")
+
+    hidden_pending_email = f"runtime.hidden.{stamp}@ankara.edu.tr"
+    hidden_pending_name = f"Runtime Hidden {stamp}"
+    register_student(temp_dir, hidden_pending_email, hidden_pending_name, label="GABNO", gano="3,33")
+
+    db_run(
+        """
+        UPDATE faculty
+        SET base_quota = current_quota + 5
+        WHERE user_id = (SELECT id FROM users WHERE email = ?)
+        """,
+        ("ahmet.yilmaz@ankara.edu.tr",),
     )
+    faculty_students = api("GET", "/faculty/students?minGano=0", token=faculty_token)
+    expect_status(faculty_students, 200, "faculty visible students")
+    visible_names = {student["full_name"] for student in faculty_students.json()}
+    rejected_student = get_student_by_email(rejected_email)
+    rejected_invite = api("POST", "/faculty/invite", token=faculty_token, json={"student_id": rejected_student["id"]})
     record(
-        "8. Hoca aktif / pasif durumu",
-        faculty_four["id"] not in list_ids,
-        "ogrenci tercih havuzunda pasif danisman gosterilmedi.",
-    )
-    record(
-        "9. Hoca degistirme senaryosu",
-        reassigned["assigned_faculty_id"] == faculty_five["id"] and latest_force_log["action"] == "FORCE_ASSIGN" and faculty_four_quota >= 0 and faculty_five_quota >= 1,
-        "yonetici manuel yeniden atama yapti; yeni danisman ve log kaydi guncellendi.",
+        "7. Danisman yalnizca onayli ogrencilerle calisir",
+        rejected_name not in visible_names
+        and hidden_pending_name not in visible_names
+        and rejected_invite.status_code == 400
+        and "onaylı" in rejected_invite.text,
+        "pending/rejected ogrenciler danisman listesinde gorunmedi ve rejected ogrenciye teklif reddedildi.",
     )
 
-    password_email = f"password_{int(time.time())}@ankara.edu.tr"
-    register_student(password_email, "Sifre Test Ogrencisi", gano=2.90, password="OldPass123!")
-    password_token, _ = login(password_email, "OldPass123!")
-    change_response = api("POST", "/auth/change-password", token=password_token, json={"current_password": "OldPass123!", "new_password": "NewPass123!"})
-    expect_status(change_response, 200, "change password")
-    new_login = api("POST", "/auth/login", json={"email": password_email, "password": "NewPass123!"})
-    old_login = api("POST", "/auth/login", json={"email": password_email, "password": "OldPass123!"})
+    created_faculty_email = f"runtime.faculty.{stamp}@ankara.edu.tr"
+    create_faculty = api(
+        "POST",
+        "/admin/users",
+        token=admin_token,
+        json={
+            "full_name": f"Runtime Faculty {stamp}",
+            "email": created_faculty_email,
+            "password": "Hoca1234!",
+            "department_id": 1,
+            "expertise_keywords": "Runtime Test",
+        },
+    )
+    departments = db_all("SELECT name FROM departments")
+    created_user = db_one("SELECT role FROM users WHERE email = ?", (created_faculty_email,))
     record(
-        "10. Sifre degistirme senaryosu",
-        new_login.status_code == 200 and old_login.status_code == 401,
-        "yeni sifre ile giris acildi, eski sifre reddedildi.",
+        "8. Admin yalnizca danisman olusturur ve tek bolum korunur",
+        create_faculty.status_code == 201
+        and created_user["role"] == "hoca"
+        and len(departments) == 1
+        and departments[0]["name"] == DEPARTMENT_NAME,
+        "admin /admin/users ile hoca olusturdu; seed veritabani tek bolum iceriyor.",
     )
 
-    admin_users = api("GET", "/admin/users", token=admin_token)
-    student_me = api("GET", "/students/me", token=student_token)
-    faculty_me = api("GET", "/faculty/me", token=faculty_token)
-    expect_status(admin_users, 200, "admin users")
-    expect_status(student_me, 200, "student me")
-    expect_status(faculty_me, 200, "faculty me")
-    users_payload = admin_users.json()
-    record(
-        "11. Tablo tasariminda bolum",
-        all(item.get("department_name") for item in users_payload if item["role"] in {"ogrenci", "hoca"})
-        and bool(student_me.json().get("department_name"))
-        and bool(faculty_me.json().get("department_name")),
-        "admin, ogrenci ve danisman akislarinda bolum bilgisi dolu geldi.",
+    wrong_password = api(
+        "POST",
+        "/auth/change-password",
+        token=faculty_token,
+        json={"current_password": "yanlis", "new_password": "YeniSifre123!"},
     )
-
-    server_health = api("GET", "/auth/login").status_code in {404, 400}
-    record(
-        "12. Mail gereksinimi olmadan calisma",
-        server_health,
-        "backend yalnizca temel ortam degiskenleri ile ayaga kalkti; mail bagimliligi gerekmedi.",
+    right_password = api(
+        "POST",
+        "/auth/change-password",
+        token=faculty_token,
+        json={"current_password": "hoca123", "new_password": "YeniSifre123!"},
     )
-
-    distinct_student_departments = db_one("SELECT COUNT(DISTINCT department_id) as c FROM students")["c"]
-    distinct_faculty_departments = db_one("SELECT COUNT(DISTINCT department_id) as c FROM faculty")["c"]
-    faculty_pool = api("GET", "/students/faculty-list", token=student_token)
-    expect_status(faculty_pool, 200, "student faculty list final")
-    distinct_names = {item["department_name"] for item in faculty_pool.json()}
+    relogin = api("POST", "/auth/login", json={"email": "ahmet.yilmaz@ankara.edu.tr", "password": "YeniSifre123!"})
     record(
-        "13. Baska bolumlerin senaryosu",
-        distinct_student_departments > 1 and distinct_faculty_departments > 1 and len(distinct_names) > 1,
-        "birden fazla bolum kaydi hem veritabaninda hem de tercih havuzunda goruldu.",
+        "9. Sifre degistirme akisi",
+        wrong_password.status_code == 401 and right_password.status_code == 200 and relogin.status_code == 200,
+        "hatali mevcut sifre reddedildi; dogru sifreyle yeni sifre kaydedildi ve tekrar giris yapildi.",
     )
 
 
 def main():
     global BASE_URL, DB_PATH
+    process = None
 
     with tempfile.TemporaryDirectory(prefix="danisman-runtime-") as temp_dir:
-        temp_db = prepare_temp_db(temp_dir)
-        DB_PATH = str(temp_db)
-        backend_process, BASE_URL = start_backend(temp_db)
-
+        DB_PATH = prepare_temp_db(temp_dir)
+        process, BASE_URL = start_backend(DB_PATH)
         try:
-            run_scenarios()
-            print(json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2))
-            if any(result.status != "PASS" for result in results):
-                raise SystemExit(1)
+            run_scenarios(temp_dir)
         finally:
-            stop_backend(backend_process)
+            stop_backend(process)
+
+    payload = [asdict(result) for result in results]
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    if any(result.status == "FAIL" for result in results):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
