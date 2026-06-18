@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calculator, Download, Play, RefreshCcw, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
+import { Calculator, Check, Download, Play, RefreshCcw, ShieldCheck, Trash2, UserCog, UserPlus, Users, X } from 'lucide-react';
 import api from '../api';
 import PasswordPanel from '../components/PasswordPanel';
 
@@ -9,15 +9,34 @@ const ROLE_LABELS = {
   ogrenci: 'Öğrenci',
 };
 
+const APPROVAL_LABELS = {
+  pending: 'Onay bekliyor',
+  approved: 'Onaylı',
+  rejected: 'Reddedildi',
+};
+
+const emptyUserForm = {
+  full_name: '',
+  email: '',
+  password: '',
+  department_id: '',
+  expertise_keywords: '',
+};
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState([]);
   const [users, setUsers] = useState([]);
   const [facultyList, setFacultyList] = useState([]);
   const [results, setResults] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [pendingApplications, setPendingApplications] = useState([]);
+  const [applicationEdits, setApplicationEdits] = useState({});
+  const [userForm, setUserForm] = useState(emptyUserForm);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedFacultyId, setSelectedFacultyId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
   const [notice, setNotice] = useState({ type: '', text: '' });
 
   const loadData = async () => {
@@ -28,12 +47,16 @@ export default function AdminDashboard() {
         usersResponse,
         facultyResponse,
         resultsResponse,
+        departmentsResponse,
+        applicationsResponse,
       ] = await Promise.all([
         api.get('/admin/get_dashboard_data'),
         api.get('/admin/logs'),
         api.get('/admin/users'),
         api.get('/admin/faculty-overview'),
         api.get('/admin/results'),
+        api.get('/admin/departments'),
+        api.get('/admin/student-applications'),
       ]);
 
       setStats(statsResponse.data);
@@ -41,6 +64,17 @@ export default function AdminDashboard() {
       setUsers(usersResponse.data);
       setFacultyList(facultyResponse.data);
       setResults(resultsResponse.data);
+      setDepartments(departmentsResponse.data);
+      setPendingApplications(applicationsResponse.data);
+      setApplicationEdits(Object.fromEntries(applicationsResponse.data.map((application) => [
+        application.id,
+        {
+          full_name: application.full_name || '',
+          email: application.email || '',
+          gano: String(application.gano ?? ''),
+          entry_year: String(application.entry_year ?? ''),
+        },
+      ])));
     } catch {
       setNotice({ type: 'error', text: 'Yönetici verileri yüklenemedi.' });
     }
@@ -49,6 +83,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!userForm.department_id && departments.length > 0) {
+      setUserForm((current) => ({
+        ...current,
+        department_id: String(departments[0].id),
+      }));
+    }
+  }, [departments, userForm.department_id]);
 
   const activeFaculty = useMemo(
     () => facultyList.filter((faculty) => faculty.is_active === 1),
@@ -61,9 +104,35 @@ export default function AdminDashboard() {
   );
 
   const unassignedStudents = useMemo(
-    () => users.filter((item) => item.role === 'ogrenci' && !item.assigned_faculty_name),
+    () => users.filter((item) => item.role === 'ogrenci' && item.approval_status === 'approved' && !item.assigned_faculty_name),
     [users],
   );
+
+  const assignableResults = useMemo(
+    () => results.filter((result) => result.approval_status === 'approved'),
+    [results],
+  );
+
+  const selectedStudent = useMemo(
+    () => assignableResults.find((result) => String(result.student_id) === String(selectedStudentId)),
+    [assignableResults, selectedStudentId],
+  );
+
+  const facultyForSelectedStudent = useMemo(
+    () => activeFaculty.filter((faculty) => (
+      selectedStudent && faculty.department_id === selectedStudent.student_department_id
+    )),
+    [activeFaculty, selectedStudent],
+  );
+
+  useEffect(() => {
+    if (
+      selectedFacultyId &&
+      !facultyForSelectedStudent.some((faculty) => String(faculty.id) === String(selectedFacultyId))
+    ) {
+      setSelectedFacultyId('');
+    }
+  }, [facultyForSelectedStudent, selectedFacultyId]);
 
   const handleAction = async (endpoint, successText) => {
     setLoading(true);
@@ -117,6 +186,71 @@ export default function AdminDashboard() {
       await loadData();
     } catch (error) {
       setNotice({ type: 'error', text: error.response?.data?.error || 'Kullanıcı silinemedi.' });
+    }
+  };
+
+  const updateUserForm = (field, value) => {
+    setUserForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const updateApplicationEdit = (applicationId, field, value) => {
+    setApplicationEdits((current) => ({
+      ...current,
+      [applicationId]: {
+        ...current[applicationId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCreateUser = async (event) => {
+    event.preventDefault();
+    setCreatingUser(true);
+    setNotice({ type: '', text: '' });
+
+    try {
+      const payload = {
+        full_name: userForm.full_name.trim(),
+        email: userForm.email.trim(),
+        password: userForm.password,
+        department_id: Number(userForm.department_id),
+        expertise_keywords: userForm.expertise_keywords.trim(),
+      };
+
+      const response = await api.post('/admin/users', payload);
+      setNotice({ type: 'success', text: response.data.message });
+      setUserForm({
+        ...emptyUserForm,
+        department_id: userForm.department_id,
+      });
+      await loadData();
+    } catch (error) {
+      setNotice({ type: 'error', text: error.response?.data?.error || 'Kullanıcı eklenemedi.' });
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleReviewApplication = async (applicationId, approvalStatus) => {
+    const edit = applicationEdits[applicationId];
+    if (!edit) {
+      return;
+    }
+
+    try {
+      const response = await api.patch(`/admin/students/${applicationId}/review`, {
+        ...edit,
+        gano: Number(edit.gano),
+        entry_year: Number(edit.entry_year),
+        approval_status: approvalStatus,
+      });
+      setNotice({ type: 'success', text: response.data.message });
+      await loadData();
+    } catch (error) {
+      setNotice({ type: 'error', text: error.response?.data?.error || 'Öğrenci başvurusu güncellenemedi.' });
     }
   };
 
@@ -184,8 +318,202 @@ export default function AdminDashboard() {
             <span>Bekleyen öğrenci</span>
             <strong>{unassignedStudents.length}</strong>
           </article>
+          <article className="stat-card">
+            <span>Onay bekleyen</span>
+            <strong>{pendingApplications.length}</strong>
+          </article>
         </section>
       )}
+
+      <section className="panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Kayıt Yönetimi</p>
+            <h2>Danışman ekle</h2>
+          </div>
+          <span className="icon-chip">
+            <UserPlus size={18} />
+          </span>
+        </div>
+
+        <form className="stack-form" onSubmit={handleCreateUser}>
+          <div className="duo-grid align-start">
+            <label className="field-block">
+              <span>Bölüm</span>
+              <select
+                className="app-input"
+                value={userForm.department_id}
+                onChange={(event) => updateUserForm('department_id', event.target.value)}
+                required
+              >
+                <option value="">Bölüm seçin</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field-block">
+              <span>Uzmanlık alanları</span>
+              <input
+                type="text"
+                className="app-input"
+                placeholder="Yapay Zeka, Veri Madenciliği"
+                value={userForm.expertise_keywords}
+                onChange={(event) => updateUserForm('expertise_keywords', event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="duo-grid align-start">
+            <label className="field-block">
+              <span>Ad soyad</span>
+              <input
+                type="text"
+                className="app-input"
+                value={userForm.full_name}
+                onChange={(event) => updateUserForm('full_name', event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="field-block">
+              <span>E-posta</span>
+              <input
+                type="email"
+                className="app-input"
+                value={userForm.email}
+                onChange={(event) => updateUserForm('email', event.target.value)}
+                required
+              />
+            </label>
+          </div>
+
+          <div className="duo-grid align-start">
+            <label className="field-block">
+              <span>Geçici şifre</span>
+              <input
+                type="password"
+                className="app-input"
+                value={userForm.password}
+                minLength={6}
+                onChange={(event) => updateUserForm('password', event.target.value)}
+                required
+              />
+            </label>
+
+          </div>
+
+          <div className="action-row">
+            <button type="submit" className="btn btn-primary" disabled={creatingUser}>
+              <UserPlus size={16} />
+              {creatingUser ? 'Ekleniyor' : 'Danışman ekle'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Öğrenci Başvuruları</p>
+            <h2>Onay bekleyen kayıtlar</h2>
+          </div>
+          <span className="icon-chip">
+            <ShieldCheck size={18} />
+          </span>
+        </div>
+
+        {pendingApplications.length === 0 ? (
+          <div className="empty-state">Onay bekleyen öğrenci kaydı yok.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Öğrenci</th>
+                  <th>Transkript</th>
+                  <th>GANO</th>
+                  <th>Giriş yılı</th>
+                  <th>İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingApplications.map((application) => {
+                  const edit = applicationEdits[application.id] || {};
+
+                  return (
+                    <tr key={application.id}>
+                      <td>
+                        <input
+                          type="text"
+                          className="app-input table-input"
+                          value={edit.full_name || ''}
+                          onChange={(event) => updateApplicationEdit(application.id, 'full_name', event.target.value)}
+                        />
+                        <input
+                          type="email"
+                          className="app-input table-input"
+                          value={edit.email || ''}
+                          onChange={(event) => updateApplicationEdit(application.id, 'email', event.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <strong>{application.transcript_full_name || 'Ad okunamadı'}</strong>
+                        <span>{application.department_name}</span>
+                        {application.transcript_warning && <span className="text-warning">{application.transcript_warning}</span>}
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          max="4"
+                          step="0.01"
+                          className="app-input table-input"
+                          value={edit.gano || ''}
+                          onChange={(event) => updateApplicationEdit(application.id, 'gano', event.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="2000"
+                          max="2100"
+                          className="app-input table-input"
+                          value={edit.entry_year || ''}
+                          onChange={(event) => updateApplicationEdit(application.id, 'entry_year', event.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <div className="icon-actions">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-small"
+                            onClick={() => handleReviewApplication(application.id, 'approved')}
+                          >
+                            <Check size={15} />
+                            Onayla
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-small"
+                            onClick={() => handleReviewApplication(application.id, 'rejected')}
+                          >
+                            <X size={15} />
+                            Reddet
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="duo-grid align-start">
         <section className="panel">
@@ -200,8 +528,8 @@ export default function AdminDashboard() {
           </div>
 
           <p className="muted-copy">
-            Kontenjan hesabı aktif danışmanlara dengeli dağıtılır. Merkezi yerleştirme, sistemde
-            atanmamış tüm öğrencileri yalnızca GANO sırasına göre işler.
+            Kontenjan hesabı aktif danışmanlara dengeli dağıtılır. Merkezi yerleştirme,
+            onaylı öğrencileri %80 GANO ve %20 tercih sırası puanına göre işler.
           </p>
 
           <div className="action-stack">
@@ -243,13 +571,16 @@ export default function AdminDashboard() {
               <select
                 className="app-input"
                 value={selectedStudentId}
-                onChange={(event) => setSelectedStudentId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedStudentId(event.target.value);
+                  setSelectedFacultyId('');
+                }}
                 required
               >
                 <option value="">Öğrenci seçin</option>
-                {results.map((result) => (
+                {assignableResults.map((result) => (
                   <option key={result.student_id} value={result.student_id}>
-                    {result.student_name} · {result.gano} · {result.faculty_name || 'Atanmadı'}
+                    {result.student_name} · {result.student_department} · {result.gano} · {result.faculty_name || 'Atanmadı'}
                   </option>
                 ))}
               </select>
@@ -261,12 +592,15 @@ export default function AdminDashboard() {
                 className="app-input"
                 value={selectedFacultyId}
                 onChange={(event) => setSelectedFacultyId(event.target.value)}
+                disabled={!selectedStudent}
                 required
               >
-                <option value="">Danışman seçin</option>
-                {activeFaculty.map((faculty) => (
+                <option value="">
+                  {selectedStudent ? `${selectedStudent.student_department} danışmanı seçin` : 'Önce öğrenci seçin'}
+                </option>
+                {facultyForSelectedStudent.map((faculty) => (
                   <option key={faculty.id} value={faculty.id}>
-                    {faculty.full_name} · {faculty.current_quota}/{faculty.base_quota}
+                    {faculty.full_name} · {faculty.department_name} · {faculty.current_quota}/{faculty.base_quota}
                   </option>
                 ))}
               </select>
@@ -363,7 +697,7 @@ export default function AdminDashboard() {
                     <td>{ROLE_LABELS[item.role] || item.role}</td>
                     <td>
                       {item.role === 'ogrenci'
-                        ? `${item.department_name || '-'} · ${item.gano || '-'}`
+                        ? `${item.department_name || '-'} · ${item.gano || '-'} · ${APPROVAL_LABELS[item.approval_status] || '-'}`
                         : item.role === 'hoca'
                           ? `${item.department_name || '-'} · ${item.is_active === 1 ? 'Aktif' : 'Pasif'}`
                           : 'Yönetici hesabı'}

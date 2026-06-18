@@ -29,7 +29,7 @@ router.get('/me', authenticate, authorize('hoca'), (req, res) => {
 router.get('/students', authenticate, authorize('hoca'), (req, res) => {
     try {
         const db = getDb();
-        const faculty = db.prepare('SELECT id, is_active FROM faculty WHERE user_id = ?').get(req.user.id);
+        const faculty = db.prepare('SELECT id, is_active, department_id FROM faculty WHERE user_id = ?').get(req.user.id);
         if (!faculty || faculty.is_active !== 1) {
             return res.status(403).json({ error: 'Pasif durumdaki danışmanlar yeni öğrenci arayamaz.' });
         }
@@ -42,9 +42,9 @@ router.get('/students', authenticate, authorize('hoca'), (req, res) => {
             FROM students s
             JOIN users u ON s.user_id = u.id
             JOIN departments d ON s.department_id = d.id
-            WHERE s.is_assigned = 0
+            WHERE s.is_assigned = 0 AND s.department_id = ? AND s.approval_status = 'approved'
         `;
-        let params = [];
+        let params = [faculty.department_id];
 
         if (minGano) {
             query += ' AND s.gano >= ?';
@@ -69,7 +69,7 @@ router.post('/invite', authenticate, authorize('hoca'), (req, res) => {
         
         if (!student_id) return res.status(400).json({ error: 'Öğrenci ID gerekli.' });
 
-        const faculty = db.prepare('SELECT id, base_quota, current_quota, is_active FROM faculty WHERE user_id = ?').get(req.user.id);
+        const faculty = db.prepare('SELECT id, base_quota, current_quota, is_active, department_id FROM faculty WHERE user_id = ?').get(req.user.id);
         if (!faculty || faculty.is_active !== 1) {
             return res.status(403).json({ error: 'Pasif durumdaki danışmanlar teklif gönderemez.' });
         }
@@ -78,9 +78,15 @@ router.post('/invite', authenticate, authorize('hoca'), (req, res) => {
             return res.status(400).json({ error: 'Mevcut kontenjanınız dolu olduğu için yeni teklif gönderemezsiniz.' });
         }
 
-        const student = db.prepare('SELECT is_assigned FROM students WHERE id = ?').get(student_id);
+        const student = db.prepare('SELECT is_assigned, department_id, approval_status FROM students WHERE id = ?').get(student_id);
         if (!student) return res.status(404).json({ error: 'Öğrenci bulunamadı.' });
+        if (student.approval_status !== 'approved') {
+            return res.status(400).json({ error: 'Yalnızca admin onaylı öğrencilere teklif gönderilebilir.' });
+        }
         if (student.is_assigned) return res.status(400).json({ error: 'Öğrenci zaten atanmış.' });
+        if (student.department_id !== faculty.department_id) {
+            return res.status(400).json({ error: 'Danışman yalnızca kendi bölümündeki öğrencilere teklif gönderebilir.' });
+        }
 
         // Check if already invited
         const existing = db.prepare('SELECT id FROM pre_assignments WHERE student_id = ? AND faculty_id = ?').get(student_id, faculty.id);

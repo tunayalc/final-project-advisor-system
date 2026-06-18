@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS students (
     gano REAL NOT NULL CHECK(gano >= 0 AND gano <= 4),
     department_id INTEGER NOT NULL REFERENCES departments(id),
     entry_year INTEGER NOT NULL,
+    approval_status TEXT NOT NULL DEFAULT 'approved' CHECK(approval_status IN ('pending', 'approved', 'rejected')),
+    transcript_full_name TEXT DEFAULT '',
+    transcript_warning TEXT DEFAULT '',
     is_assigned INTEGER DEFAULT 0,
     assigned_faculty_id INTEGER REFERENCES faculty(id)
 );

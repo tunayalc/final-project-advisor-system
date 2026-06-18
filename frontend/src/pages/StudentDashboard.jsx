@@ -22,14 +22,22 @@ export default function StudentDashboard({ user }) {
 
   const loadData = async () => {
     try {
-      const [profileResponse, invitationResponse, facultyResponse, preferenceResponse] = await Promise.all([
-        api.get('/students/me'),
+      const profileResponse = await api.get('/students/me');
+      setProfile(profileResponse.data);
+
+      if (profileResponse.data.approval_status !== 'approved') {
+        setInvitations([]);
+        setFacultyList([]);
+        setPreferences([]);
+        return;
+      }
+
+      const [invitationResponse, facultyResponse, preferenceResponse] = await Promise.all([
         api.get('/students/invitations'),
         api.get('/students/faculty-list'),
         api.get('/students/preferences'),
       ]);
 
-      setProfile(profileResponse.data);
       setInvitations(invitationResponse.data);
       setFacultyList(facultyResponse.data);
       setPreferences(preferenceResponse.data);
@@ -114,6 +122,7 @@ export default function StudentDashboard({ user }) {
   );
   const pendingInvitations = invitations.filter((invitation) => invitation.status === 'pending');
   const isAssigned = profile?.is_assigned === 1;
+  const isApproved = profile?.approval_status === 'approved';
 
   if (!profile) {
     return (
@@ -131,8 +140,8 @@ export default function StudentDashboard({ user }) {
           <p className="eyebrow">Öğrenci Modülü</p>
           <h1>{sessionUser?.full_name}</h1>
           <p className="muted-copy">
-            {profile.department_name} bölümünde kayıtlı öğrenci profili. Otomatik yerleştirme akışı
-            yalnızca GANO sıralamasına göre çalışır.
+            {profile.department_name} bölümünde kayıtlı öğrenci profili. Merkezi yerleştirme akışı
+            %80 GANO ve %20 tercih sırası puanıyla çalışır.
           </p>
         </div>
 
@@ -147,14 +156,57 @@ export default function StudentDashboard({ user }) {
           </article>
           <article className="stat-card">
             <span>Durum</span>
-            <strong>{isAssigned ? 'Atandı' : 'Beklemede'}</strong>
+            <strong>
+              {profile.approval_status === 'pending'
+                ? 'Onay bekliyor'
+                : profile.approval_status === 'rejected'
+                  ? 'Reddedildi'
+                  : isAssigned ? 'Atandı' : 'Tercih bekliyor'}
+            </strong>
           </article>
         </div>
       </section>
 
       {notice.text && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
 
-      {isAssigned ? (
+      {!isApproved ? (
+        <div className="duo-grid">
+          <section className="panel emphasis-panel">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Kayıt Durumu</p>
+                <h2>
+                  {profile.approval_status === 'rejected'
+                    ? 'Öğrenci kaydınız reddedildi'
+                    : 'Admin onayı bekleniyor'}
+                </h2>
+              </div>
+            </div>
+
+            <p className="muted-copy">
+              {profile.approval_status === 'rejected'
+                ? 'Bu hesapla tercih oluşturamazsınız. Bilgilerinizin yeniden değerlendirilmesi için yöneticiyle iletişime geçin.'
+                : 'Transkriptinizden GANO bilginiz okundu. Admin kaydınızı onayladığında danışman havuzu ve tercih listesi açılacak.'}
+            </p>
+
+            <div className="detail-stack">
+              <div className="detail-row">
+                <span>Okunan GANO</span>
+                <strong>{profile.gano?.toFixed?.(2) || profile.gano}</strong>
+              </div>
+              <div className="detail-row">
+                <span>Transkript adı</span>
+                <strong>{profile.transcript_full_name || '-'}</strong>
+              </div>
+              {profile.transcript_warning && (
+                <div className="notice notice-info">{profile.transcript_warning}</div>
+              )}
+            </div>
+          </section>
+
+          <PasswordPanel />
+        </div>
+      ) : isAssigned ? (
         <div className="duo-grid">
           <section className="panel emphasis-panel">
             <div className="section-header">

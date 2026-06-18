@@ -1,13 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Lock, ShieldCheck, UserRound } from 'lucide-react';
+import { ArrowRight, FileText, Lock, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
 import api from '../api';
 
 export default function Login({ onLogin }) {
+  const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [registerForm, setRegisterForm] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    entry_year: String(new Date().getFullYear()),
+    transcript: null,
+  });
   const [error, setError] = useState('');
+  const [registerError, setRegisterError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registerLoading, setRegisterLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (event) => {
@@ -34,6 +44,42 @@ export default function Login({ onLogin }) {
     }
   };
 
+  const updateRegisterForm = (field, value) => {
+    setRegisterForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleRegister = async (event) => {
+    event.preventDefault();
+    setRegisterError('');
+    setRegisterLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('full_name', registerForm.full_name);
+      formData.append('email', registerForm.email);
+      formData.append('password', registerForm.password);
+      formData.append('entry_year', registerForm.entry_year);
+      formData.append('transcript', registerForm.transcript);
+
+      const response = await api.post('/auth/register', formData);
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      if (onLogin) {
+        onLogin(response.data.user);
+      }
+
+      navigate('/student');
+    } catch (requestError) {
+      setRegisterError(requestError.response?.data?.error || 'Öğrenci kaydı oluşturulamadı.');
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
   return (
     <div className="login-grid animate-fade-in">
       <section className="login-brand">
@@ -56,7 +102,7 @@ export default function Login({ onLogin }) {
             <ArrowRight size={18} />
             <div>
               <strong>Merkezi Akış</strong>
-              <p className="muted-copy">Otomatik sıralama aşamasında tek kriter GANO'dur.</p>
+              <p className="muted-copy">Atama puanı GANO ve tercih sırasını birlikte kullanır.</p>
             </div>
           </article>
         </div>
@@ -65,60 +111,167 @@ export default function Login({ onLogin }) {
       <section className="panel login-panel">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Giriş</p>
-            <h2>Sisteme erişin</h2>
+            <p className="eyebrow">{mode === 'login' ? 'Giriş' : 'Öğrenci Kaydı'}</p>
+            <h2>{mode === 'login' ? 'Sisteme erişin' : 'Kendi hesabınızı oluşturun'}</h2>
           </div>
         </div>
 
+        <div className="segmented-control form-tabs" role="group" aria-label="Oturum işlemi">
+          <button
+            type="button"
+            className={`segmented-option ${mode === 'login' ? 'is-active' : ''}`}
+            onClick={() => setMode('login')}
+          >
+            <ArrowRight size={16} />
+            Giriş
+          </button>
+          <button
+            type="button"
+            className={`segmented-option ${mode === 'register' ? 'is-active' : ''}`}
+            onClick={() => setMode('register')}
+          >
+            <UserPlus size={16} />
+            Öğrenci Kaydı
+          </button>
+        </div>
+
         <p className="muted-copy">
-          Kurumsal e-posta adresiniz ve şifreniz ile oturum açın.
+          {mode === 'login'
+            ? 'Kurumsal e-posta adresiniz ve şifreniz ile oturum açın.'
+            : 'Transkript PDF dosyanızdan GANO okunur; hesabınız admin onayından sonra tercih yapabilir.'}
         </p>
 
-        {error && <div className="notice notice-error">{error}</div>}
+        {mode === 'login' ? (
+          <>
+            {error && <div className="notice notice-error">{error}</div>}
 
-        <form className="stack-form" onSubmit={handleLogin}>
-          <label className="field-block">
-            <span>E-posta adresi</span>
-            <div className="field-with-icon">
-              <UserRound size={16} />
-              <input
-                type="email"
-                className="app-input"
-                placeholder="örnek@ankara.edu.tr"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
+            <form className="stack-form" onSubmit={handleLogin}>
+              <label className="field-block">
+                <span>E-posta adresi</span>
+                <div className="field-with-icon">
+                  <UserRound size={16} />
+                  <input
+                    type="email"
+                    className="app-input"
+                    placeholder="örnek@ankara.edu.tr"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                  />
+                </div>
+              </label>
+
+              <label className="field-block">
+                <span>Şifre</span>
+                <div className="field-with-icon">
+                  <Lock size={16} />
+                  <input
+                    type="password"
+                    className="app-input"
+                    placeholder="En az 8 karakter"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                  />
+                </div>
+              </label>
+
+              <button type="submit" className="btn btn-primary btn-wide" disabled={loading}>
+                <ArrowRight size={16} />
+                {loading ? 'Oturum açılıyor' : 'Devam et'}
+              </button>
+            </form>
+
+            <div className="demo-box">
+              <p><strong>Demo hesapları</strong></p>
+              <p>Admin: admin@ankara.edu.tr / admin123</p>
+              <p>Danışman: ahmet.yilmaz@ankara.edu.tr / hoca123</p>
             </div>
-          </label>
+          </>
+        ) : (
+          <>
+            {registerError && <div className="notice notice-error">{registerError}</div>}
 
-          <label className="field-block">
-            <span>Şifre</span>
-            <div className="field-with-icon">
-              <Lock size={16} />
-              <input
-                type="password"
-                className="app-input"
-                placeholder="En az 8 karakter"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </div>
-          </label>
+            <form className="stack-form" onSubmit={handleRegister}>
+              <label className="field-block">
+                <span>Ad soyad</span>
+                <div className="field-with-icon">
+                  <UserRound size={16} />
+                  <input
+                    type="text"
+                    className="app-input"
+                    value={registerForm.full_name}
+                    onChange={(event) => updateRegisterForm('full_name', event.target.value)}
+                    required
+                  />
+                </div>
+              </label>
 
-          <button type="submit" className="btn btn-primary btn-wide" disabled={loading}>
-            <ArrowRight size={16} />
-            {loading ? 'Oturum açılıyor' : 'Devam et'}
-          </button>
-        </form>
+              <label className="field-block">
+                <span>E-posta adresi</span>
+                <input
+                  type="email"
+                  className="app-input"
+                  placeholder="ogrenci@ankara.edu.tr"
+                  value={registerForm.email}
+                  onChange={(event) => updateRegisterForm('email', event.target.value)}
+                  required
+                />
+              </label>
 
-        <div className="demo-box">
-          <p><strong>Demo hesapları</strong></p>
-          <p>Admin: admin@ankara.edu.tr / admin123</p>
-          <p>Danışman: ahmet.yilmaz@ankara.edu.tr / hoca123</p>
-          <p>Öğrenci: ogrenci01@ankara.edu.tr / ogrenci123</p>
-        </div>
+              <div className="duo-grid align-start">
+                <label className="field-block">
+                  <span>Şifre</span>
+                  <input
+                    type="password"
+                    className="app-input"
+                    minLength={8}
+                    value={registerForm.password}
+                    onChange={(event) => updateRegisterForm('password', event.target.value)}
+                    required
+                  />
+                </label>
+
+                <label className="field-block">
+                  <span>Giriş yılı</span>
+                  <input
+                    type="number"
+                    min="2000"
+                    max="2100"
+                    className="app-input"
+                    value={registerForm.entry_year}
+                    onChange={(event) => updateRegisterForm('entry_year', event.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="demo-box">
+                <p><strong>Bölüm</strong></p>
+                <p>Yapay Zeka ve Veri Mühendisliği</p>
+              </div>
+
+              <label className="field-block">
+                <span>Transkript PDF</span>
+                <div className="field-with-icon">
+                  <FileText size={16} />
+                  <input
+                    type="file"
+                    className="app-input"
+                    accept="application/pdf"
+                    onChange={(event) => updateRegisterForm('transcript', event.target.files?.[0] || null)}
+                    required
+                  />
+                </div>
+              </label>
+
+              <button type="submit" className="btn btn-primary btn-wide" disabled={registerLoading}>
+                <UserPlus size={16} />
+                {registerLoading ? 'Kayıt oluşturuluyor' : 'Öğrenci kaydı oluştur'}
+              </button>
+            </form>
+          </>
+        )}
       </section>
     </div>
   );

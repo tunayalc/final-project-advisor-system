@@ -17,6 +17,21 @@ export default function Navbar({ user, onLogout, onOpenPasswordDialog }) {
   const navigate = useNavigate();
   const RoleIcon = ROLE_ICONS[user?.role] || Shield;
 
+  const handlePasswordClick = () => {
+    if (onOpenPasswordDialog) {
+      onOpenPasswordDialog();
+      return;
+    }
+
+    const passwordPanel = document.getElementById('password-panel');
+    passwordPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const firstInput = passwordPanel?.querySelector('input');
+    if (firstInput instanceof HTMLElement) {
+      firstInput.focus({ preventScroll: true });
+    }
+  };
+
   return (
     <nav className="topbar">
       <button className="brand-lockup" type="button" onClick={() => navigate('/')}>
@@ -36,7 +51,7 @@ export default function Navbar({ user, onLogout, onOpenPasswordDialog }) {
           </div>
         </div>
 
-        <button onClick={onOpenPasswordDialog} className="btn btn-outline" type="button">
+        <button onClick={handlePasswordClick} className="btn btn-outline" type="button">
           <KeyRound size={16} />
           Şifre
         </button>

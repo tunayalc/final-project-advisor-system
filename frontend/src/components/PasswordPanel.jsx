@@ -38,7 +38,7 @@ export default function PasswordPanel() {
   };
 
   return (
-    <section className="panel">
+    <section id="password-panel" className="panel" tabIndex="-1">
       <div className="section-header">
         <div>
           <p className="eyebrow">Hesap Güvenliği</p>

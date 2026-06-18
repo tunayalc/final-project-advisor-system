@@ -20,6 +20,18 @@ function migrateDb() {
     if (!hasColumn('faculty', 'is_active')) {
         db.prepare('ALTER TABLE faculty ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1').run();
     }
+
+    if (!hasColumn('students', 'approval_status')) {
+        db.prepare("ALTER TABLE students ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'").run();
+    }
+
+    if (!hasColumn('students', 'transcript_full_name')) {
+        db.prepare("ALTER TABLE students ADD COLUMN transcript_full_name TEXT DEFAULT ''").run();
+    }
+
+    if (!hasColumn('students', 'transcript_warning')) {
+        db.prepare("ALTER TABLE students ADD COLUMN transcript_warning TEXT DEFAULT ''").run();
+    }
 }
 
 function getDb() {
@@ -48,11 +60,9 @@ function initializeDb() {
 
         const adminHash = bcrypt.hashSync('admin123', 10);
         const hocaHash = bcrypt.hashSync('hoca123', 10);
-        const ogrenciHash = bcrypt.hashSync('ogrenci123', 10);
 
         db.prepare('UPDATE users SET password_hash = ? WHERE role = ?').run(adminHash, 'admin');
         db.prepare('UPDATE users SET password_hash = ? WHERE role = ?').run(hocaHash, 'hoca');
-        db.prepare('UPDATE users SET password_hash = ? WHERE role = ?').run(ogrenciHash, 'ogrenci');
 
         console.log('✅ Veritabanı seed verileri yüklendi.');
     }
