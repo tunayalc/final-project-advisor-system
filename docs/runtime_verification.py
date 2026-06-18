@@ -22,7 +22,10 @@ DB_PATH = None
 results = []
 
 STUDENT_PASSWORD = "Temp1234!"
-DEPARTMENT_NAME = "Yapay Zeka ve Veri Mühendisliği"
+REQUIRED_DEPARTMENTS = {
+    "Yapay Zeka ve Veri Mühendisliği",
+    "Bilgisayar Mühendisliği",
+}
 
 
 @dataclass
@@ -217,7 +220,7 @@ def login(email, password):
     return data["token"], data["user"]
 
 
-def register_student(temp_dir, email, full_name, label="GABNO", gano="3,48", password=STUDENT_PASSWORD):
+def register_student(temp_dir, email, full_name, label="GABNO", gano="3,48", password=STUDENT_PASSWORD, department_id=1):
     transcript_path = write_transcript(temp_dir, full_name, label=label, gano=gano)
     with transcript_path.open("rb") as transcript:
         response = api(
@@ -227,6 +230,7 @@ def register_student(temp_dir, email, full_name, label="GABNO", gano="3,48", pas
                 "full_name": full_name,
                 "email": email,
                 "password": password,
+                "department_id": str(department_id),
                 "entry_year": "2023",
             },
             files={
@@ -237,7 +241,7 @@ def register_student(temp_dir, email, full_name, label="GABNO", gano="3,48", pas
     return response.json()
 
 
-def attempt_register(temp_dir, email, full_name, label, gano):
+def attempt_register(temp_dir, email, full_name, label, gano, department_id=1):
     transcript_path = write_transcript(temp_dir, full_name, label=label, gano=gano)
     with transcript_path.open("rb") as transcript:
         return api(
@@ -247,6 +251,7 @@ def attempt_register(temp_dir, email, full_name, label, gano):
                 "full_name": full_name,
                 "email": email,
                 "password": STUDENT_PASSWORD,
+                "department_id": str(department_id),
                 "entry_year": "2023",
             },
             files={"transcript": ("transcript.pdf", transcript, "application/pdf")},
@@ -295,6 +300,9 @@ def run_scenarios(temp_dir):
     stamp = int(time.time())
     admin_token, admin_user = login("admin@ankara.edu.tr", "admin123")
     faculty_token, faculty_user = login("ahmet.yilmaz@ankara.edu.tr", "hoca123")
+    departments_response = api("GET", "/auth/departments")
+    expect_status(departments_response, 200, "public departments")
+    public_department_names = {department["name"] for department in departments_response.json()}
 
     pending_email = f"runtime.pending.{stamp}@ankara.edu.tr"
     pending_name = f"Runtime Pending {stamp}"
@@ -304,8 +312,11 @@ def run_scenarios(temp_dir):
     unauthorized = api("GET", "/admin/get_dashboard_data", token=pending_token)
     record(
         "1. Rol bazli giris ve yetki kontrolu",
-        admin_user["role"] == "admin" and faculty_user["role"] == "hoca" and unauthorized.status_code == 403,
-        "admin ve danisman seed hesaplari giris yapti; ogrenci tokeni admin endpointinden 403 aldi.",
+        admin_user["role"] == "admin"
+        and faculty_user["role"] == "hoca"
+        and unauthorized.status_code == 403
+        and REQUIRED_DEPARTMENTS.issubset(public_department_names),
+        "admin ve danisman seed hesaplari giris yapti; ogrenci tokeni admin endpointinden 403 aldi; public bolum listesi geldi.",
     )
 
     profile_response = api("GET", "/students/me", token=pending_token)
@@ -361,6 +372,22 @@ def run_scenarios(temp_dir):
         "admin onayi verildi; ogrenci aktif danismanlari gordu ve tercihlerini kaydetti.",
     )
 
+    bm_email = f"runtime.bm.{stamp}@ankara.edu.tr"
+    bm_name = f"Runtime BM {stamp}"
+    bm_register = register_student(temp_dir, bm_email, bm_name, label="GABNO", gano="3,55", department_id=2)
+    bm_application = get_pending_application(admin_token, bm_email)
+    review_application(admin_token, bm_application, "approved")
+    bm_faculty_response = api("GET", "/students/faculty-list", token=bm_register["token"])
+    expect_status(bm_faculty_response, 200, "bm faculty list")
+    bm_faculty_names = {faculty["full_name"] for faculty in bm_faculty_response.json()}
+    record(
+        "6. Secilen bolum ogrencinin danisman havuzunu izole eder",
+        len(bm_faculty_names) == 10
+        and "Prof. Dr. Cem Arslan" in bm_faculty_names
+        and "Prof. Dr. Ahmet Yılmaz" not in bm_faculty_names,
+        "Bilgisayar Muhendisligi ogrencisi yalniz kendi bolumundeki 10 danismani gordu.",
+    )
+
     quota_response = api("POST", "/admin/calculate-quotas", token=admin_token)
     assignment_response = api("POST", "/admin/run-assignment", token=admin_token)
     expect_status(quota_response, 200, "calculate quotas")
@@ -379,7 +406,7 @@ def run_scenarios(temp_dir):
         None,
     )
     record(
-        "6. Puanli atama ve atanmis ogrenci kilidi",
+        "7. Puanli atama ve atanmis ogrenci kilidi",
         assigned_profile.json()["is_assigned"] == 1 and resave_assigned.status_code == 400 and score_log is not None,
         "atama calisti; SCORE_ASSIGN puan logu olustu ve atanmis ogrenci tercih degistiremedi.",
     )
@@ -408,7 +435,7 @@ def run_scenarios(temp_dir):
     rejected_student = get_student_by_email(rejected_email)
     rejected_invite = api("POST", "/faculty/invite", token=faculty_token, json={"student_id": rejected_student["id"]})
     record(
-        "7. Danisman yalnizca onayli ogrencilerle calisir",
+        "8. Danisman yalnizca onayli ogrencilerle calisir",
         rejected_name not in visible_names
         and hidden_pending_name not in visible_names
         and rejected_invite.status_code == 400
@@ -430,14 +457,14 @@ def run_scenarios(temp_dir):
         },
     )
     departments = db_all("SELECT name FROM departments")
+    department_names = {department["name"] for department in departments}
     created_user = db_one("SELECT role FROM users WHERE email = ?", (created_faculty_email,))
     record(
-        "8. Admin yalnizca danisman olusturur ve tek bolum korunur",
+        "9. Admin yalnizca danisman olusturur ve ana bolumler korunur",
         create_faculty.status_code == 201
         and created_user["role"] == "hoca"
-        and len(departments) == 1
-        and departments[0]["name"] == DEPARTMENT_NAME,
-        "admin /admin/users ile hoca olusturdu; seed veritabani tek bolum iceriyor.",
+        and REQUIRED_DEPARTMENTS.issubset(department_names),
+        "admin /admin/users ile hoca olusturdu; seed veritabani ana bolumleri iceriyor.",
     )
 
     wrong_password = api(
@@ -454,7 +481,7 @@ def run_scenarios(temp_dir):
     )
     relogin = api("POST", "/auth/login", json={"email": "ahmet.yilmaz@ankara.edu.tr", "password": "YeniSifre123!"})
     record(
-        "9. Sifre degistirme akisi",
+        "10. Sifre degistirme akisi",
         wrong_password.status_code == 401 and right_password.status_code == 200 and relogin.status_code == 200,
         "hatali mevcut sifre reddedildi; dogru sifreyle yeni sifre kaydedildi ve tekrar giris yapildi.",
     )

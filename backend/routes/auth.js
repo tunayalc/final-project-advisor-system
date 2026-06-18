@@ -7,8 +7,6 @@ const { getDb } = require('../db/database');
 const { authenticate, JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
-const STUDENT_DEPARTMENT_ID = 1;
-const STUDENT_DEPARTMENT_NAME = 'Yapay Zeka ve Veri Mühendisliği';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -132,21 +130,38 @@ async function extractTranscriptInfo(buffer) {
     }
 }
 
+// GET /api/auth/departments
+router.get('/departments', (req, res) => {
+    try {
+        const db = getDb();
+        const departments = db.prepare('SELECT id, name FROM departments ORDER BY id ASC').all();
+        res.json(departments);
+    } catch (err) {
+        console.error('Departments error:', err);
+        res.status(500).json({ error: 'Sunucu hatası.' });
+    }
+});
+
 // POST /api/auth/register
 router.post('/register', handleTranscriptUpload, async (req, res) => {
     try {
-        const { email, password, full_name, entry_year } = req.body;
+        const { email, password, full_name, entry_year, department_id } = req.body;
         const db = getDb();
         const normalizedEmail = String(email || '').trim().toLowerCase();
         const normalizedName = String(full_name || '').trim();
         const parsedEntryYear = Number(entry_year);
+        const departmentId = Number(department_id);
 
-        if (!normalizedEmail || !password || !normalizedName || !entry_year) {
-            return res.status(400).json({ error: 'Ad soyad, e-posta, şifre, giriş yılı ve transkript zorunludur.' });
+        if (!normalizedEmail || !password || !normalizedName || !entry_year || !department_id) {
+            return res.status(400).json({ error: 'Ad soyad, e-posta, şifre, bölüm, giriş yılı ve transkript zorunludur.' });
         }
 
         if (String(password).length < 8) {
             return res.status(400).json({ error: 'Şifre en az 8 karakter olmalıdır.' });
+        }
+
+        if (!Number.isInteger(departmentId) || departmentId <= 0) {
+            return res.status(400).json({ error: 'Geçerli bir bölüm seçin.' });
         }
 
         if (!Number.isInteger(parsedEntryYear) || parsedEntryYear < 2000 || parsedEntryYear > 2100) {
@@ -161,6 +176,11 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
         const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
         if (existing) {
             return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı.' });
+        }
+
+        const department = db.prepare('SELECT id, name FROM departments WHERE id = ?').get(departmentId);
+        if (!department) {
+            return res.status(404).json({ error: 'Bölüm bulunamadı.' });
         }
 
         const transcriptInfo = await extractTranscriptInfo(req.file.buffer);
@@ -192,7 +212,7 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
             ).run(
                 userId,
                 transcriptInfo.gano,
-                STUDENT_DEPARTMENT_ID,
+                department.id,
                 parsedEntryYear,
                 transcriptInfo.transcriptFullName,
                 transcriptWarning
@@ -217,8 +237,8 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
                 role: 'ogrenci',
                 full_name: normalizedName,
                 profile: {
-                    department_id: STUDENT_DEPARTMENT_ID,
-                    department_name: STUDENT_DEPARTMENT_NAME,
+                    department_id: department.id,
+                    department_name: department.name,
                     gano: transcriptInfo.gano,
                     entry_year: parsedEntryYear,
                     approval_status: 'pending',

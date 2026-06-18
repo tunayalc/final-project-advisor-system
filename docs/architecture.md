@@ -4,8 +4,8 @@
 
 Danisman Atama Sistemi, ogrencilerin kendi hesaplarini transkript PDF yukleyerek actigi,
 adminin bu basvurulari onayladigi ve danisman atamalarinin puanli merkezi motorla
-yapildigi bir web uygulamasidir. Sistem tek bolum mantigiyla calisir:
-`Yapay Zeka ve Veri Muhendisligi`.
+yapildigi cok bolumlu bir web uygulamasidir. Seed ortaminda iki ana bolum vardir:
+`Yapay Zeka ve Veri Muhendisligi` ve `Bilgisayar Muhendisligi`.
 
 Atama motoru artik yalnizca GANO sirasi ile ilerlemez. Ogrencinin akademik basarisi ve
 tercih sirasi birlikte kullanilir:
@@ -19,7 +19,9 @@ Dogrudan danisman teklifi kabul edilirse ogrenci merkezi yerlestirme sirasindan 
 ## Temel Is Kurallari
 
 - Public kayit endpointi yalnizca ogrenci olusturur; `role` alani kabul edilmez.
-- Ogrenci kaydi `multipart/form-data` ile yapilir ve transkript PDF bellekte okunur.
+- Public `GET /api/auth/departments` endpointi kayit formu icin bolum listesini dondurur.
+- Ogrenci kaydi `multipart/form-data` ile yapilir; bolum secimi zorunludur ve transkript PDF bellekte okunur.
+- Secilen bolum veritabaninda yoksa kayit reddedilir.
 - PDF metninde `GANO` veya `GABNO` etiketi aranir; bulunan deger `0-4` araliginda olmalidir.
 - Transkriptte okunabilen ad soyad, formdaki ad soyad ile normalize edilerek karsilastirilir.
   Uyusmazlik varsa kayit reddedilmez; admin onay ekraninda uyari olarak gosterilir.
@@ -128,8 +130,12 @@ sequenceDiagram
     participant PDF as PDF Parser
     participant DB as SQLite
 
-    O->>F: Ad soyad, e-posta, sifre, giris yili ve transkript PDF girer
+    F->>B: GET /api/auth/departments
+    B->>DB: Bolum listesini oku
+    B-->>F: Bolumler
+    O->>F: Ad soyad, e-posta, sifre, bolum, giris yili ve transkript PDF girer
     F->>B: POST /api/auth/register multipart/form-data
+    B->>DB: Secilen bolum var mi kontrol et
     B->>PDF: PDF metninden GANO/GABNO ve ad soyad oku
     PDF-->>B: GANO ve transkript adi
     B->>DB: users ve students kaydi olustur (approval_status=pending)
@@ -232,7 +238,9 @@ sequenceDiagram
 
 - Veritabani uygulama acilisinda `schema.sql` ve `seed.sql` ile temiz ortamda olusturulabilir.
 - Seed verisi admin ve danismanlardan olusur; demo ogrenci hesabi bulunmaz.
-- Tek bolum kaydi seed icinde `Yapay Zeka ve Veri Muhendisligi` olarak tutulur.
+- Seed iki ana bolumu ve demo danismanlarini icerir; mevcut DB acilisinda eksik ana bolumler idempotent eklenir.
+- Atama algoritmasi icin CSV test case datasetleri `docs/assignment_cases` altinda tutulur.
+- `node docs/assignment_case_runner.cjs --all` komutu ana ve aykiri atama senaryolarini gecici DB uzerinde kosar.
 - Gercek transkript dosyalari sistemde saklanmaz; PDF metni kayit sirasinda bellekte islenir.
 - OCR veya fotograf tabanli transkript destegi bu surumun kapsami disindadir.
 - Kullanici silme isleminde bagli tercih, teklif, atama ve log verileri kontrollu sekilde temizlenir.

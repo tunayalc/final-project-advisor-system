@@ -1,0 +1,13 @@
+key,value
+total_students,110
+approved_assignable,110
+faculty_count,10
+expected_assigned,110
+expected_unplaced,0
+expected_placed_by_preference,110
+expected_placed_randomly,0
+min_score_logs,110
+expected_distribution,1:11|2:11|3:11|4:11|5:11|6:11|7:11|8:11|9:11|10:11
+require_no_cross_department,true
+require_no_quota_overflow,true
+max_runtime_ms,15000

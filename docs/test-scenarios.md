@@ -1,7 +1,7 @@
 # Test Senaryolari
 
-Bu dokuman, mevcut urun akisini test odakli hale getirir. Sistem tek bolumle calisir:
-`Yapay Zeka ve Veri Muhendisligi`. Ogrenciler self-register akisiyle transkript PDF yukler,
+Bu dokuman, mevcut urun akisini test odakli hale getirir. Sistem cok bolumlu calisir:
+`Yapay Zeka ve Veri Muhendisligi` ve `Bilgisayar Muhendisligi`. Ogrenciler self-register akisiyle bolum secip transkript PDF yukler,
 admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih sirasi` puaniyla ilerler.
 
 ## Temel Senaryolar
@@ -19,12 +19,13 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
 ### 2. Ogrenci transkript PDF ile kayit olur
 
 - Login ekranindaki `Ogrenci Kaydi` sekmesi acilir.
-- Ad soyad, e-posta, sifre, giris yili ve transkript PDF yuklenir.
+- Ad soyad, e-posta, sifre, bolum, giris yili ve transkript PDF yuklenir.
 - PDF icinde `GANO` veya `GABNO` etiketiyle gecen deger okunur.
 - Beklenen sonuc:
   - kayit `201` doner
   - kullanici rolu `ogrenci` olur
   - ogrenci `approval_status=pending` baslar
+  - ogrenci secilen bolume kaydolur
   - okunan GANO ogrenci profilinde gorunur
   - transkriptteki ad soyad formdaki addan farkliysa uyari saklanir
 
@@ -64,7 +65,7 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - `Danisman ekle` formu vardir
   - admin panelinde `Ogrenci ekle` formu yoktur
   - `/admin/users` endpointi olusturdugu kullaniciyi `hoca` roluyle kaydeder
-  - danisman tek bolum altinda olusturulur
+  - danisman secilen bolum altinda olusturulur
 
 ### 7. Approved ogrenci tercih kaydeder
 
@@ -151,14 +152,72 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
   - yeni sifre hashlenerek saklanir
   - hatali mevcut sifre ile islem reddedilir
 
-### 16. Tek bolum tutarliligi
+### 16. Cok bolum tutarliligi
 
 - Departman listesi ve paneller kontrol edilir.
 - Beklenen sonuc:
-  - seed ortaminda tek bolum vardir
-  - bolum adi `Yapay Zeka ve Veri Muhendisligi` olarak gorunur
-  - ogrenci self-register akisi bu bolume kaydeder
-  - admin danisman olustururken ayni bolumu kullanir
+  - seed ortaminda `Yapay Zeka ve Veri Muhendisligi` ve `Bilgisayar Muhendisligi` vardir
+  - ogrenci self-register akisi secilen bolume kaydeder
+  - admin danisman olustururken bolum secer
+  - ogrenci ve hoca listeleri bolum disina cikmaz
+
+## CSV Atama Dataset Senaryolari
+
+Bu senaryolar `docs/assignment_cases` altinda CSV olarak kayitlidir ve `node docs/assignment_case_runner.cjs --all` komutuyla kosulur.
+
+### 17. Test Case 1: Yogun talep goren iki hoca
+
+- YZVM bolumunde 4 hoca ve 22 approved ogrenci vardir.
+- En cok talep goren 2 hocayi 7'ser ogrenci birinci tercih yapar.
+- Diger 2 hocayi 4'er ogrenci birinci tercih yapar.
+- Beklenen sonuc:
+  - tum ogrenciler atanir
+  - dagilim `6/6/5/5` olur
+  - kota asimi ve bolum disi atama olmaz
+  - her atama icin puan logu olusur
+
+### 18. Test Case 2: Happy path esit tercih
+
+- YZVM bolumunde 4 hoca ve 40 approved ogrenci vardir.
+- Her hocayi 10 ogrenci birinci tercih yapar.
+- Beklenen sonuc:
+  - dagilim `10/10/10/10` olur
+  - tum ogrenciler tercih uzerinden atanir
+
+### 19. Test Case 3: Bizim bolum 40 kontenjan
+
+- YZVM bolumunde 4 hoca ve 40 approved ogrenci vardir.
+- Tercihler dengesiz dagilir.
+- Beklenen sonuc:
+  - sistem 40 ogrenciyi bolum icinde dengeli kotaya gore yerlestirir
+  - dagilim `10/10/10/10` olur
+  - puanli siralama ve kota sinirlari korunur
+
+### 20. Test Case 4: Bilgisayar Muhendisligi 110 ogrenci
+
+- Bilgisayar Muhendisligi bolumunde 10 hoca ve 110 approved ogrenci vardir.
+- Tercihler populer hoca yogunlugu ve normal dagilim karisimi icerir.
+- Beklenen sonuc:
+  - her hocanin kotasi ortalama 11 olur
+  - 110 ogrencinin tamami atanir
+  - bolum disi atama olusmaz
+
+### 21. Test Case 5: Kapasite benchmark
+
+- `05_capacity_100`, `05_capacity_500`, `05_capacity_1000`, `05_capacity_5000` datasetleri kosulur.
+- Beklenen sonuc:
+  - algoritma hata vermeden tamamlanir
+  - tum ogrenciler atanir
+  - kontenjan asimi olmaz
+  - sure raporlanir; 5000 ogrenci icin 60 saniye ustu sonuc uyari sayilir
+
+### 22. Ek aykiri durum datasetleri
+
+- Pending/rejected ogrenciler atamaya dahil edilmez.
+- Pasif hoca tercihte olsa bile kullanilmaz.
+- Tercihsiz ogrenci fallback ile bos kontenjana gider.
+- Ayni puan/GANO/tercih sirasi durumunda ogrenci ID ve hoca ID tie-break calisir.
+- Ayni anda iki bolum verisi varken bolumler birbirine karismaz.
 
 ## Kontrol Listesi
 
@@ -172,5 +231,6 @@ admin onayindan sonra tercih yapar ve merkezi atama `%80 GANO + %20 tercih siras
 - Merkezi atama `%80 GANO + %20 tercih sirasi` puanini uyguluyor mu?
 - Puan detaylari admin loglarina yaziliyor mu?
 - Danisman paneli yalnizca approved ve atanmamis ogrencileri gosteriyor mu?
-- Tek bolum kurali tum UI ve API akislarinda korunuyor mu?
+- Cok bolum izolasyonu tum UI ve API akislarinda korunuyor mu?
+- CSV dataset runner tum ana ve aykiri atama senaryolarini PASS veriyor mu?
 - README, mimari dokumani, runtime test ve Playwright e2e ayni sistemi anlatiyor mu?

@@ -1,15 +1,15 @@
 # Final Project Advisor System
 
-React, Node.js ve SQLite ile geliştirilmiş danışman atama sistemi. Öğrenciler transkript PDF yükleyerek kendi hesaplarını oluşturur, admin öğrenci kayıtlarını onaylar ve merkezi atama `%80 GANO + %20 tercih sırası` puanıyla yapılır.
+React, Node.js ve SQLite ile geliştirilmiş çok bölümlü danışman atama sistemi. Öğrenciler bölüm seçerek transkript PDF yükler, admin öğrenci kayıtlarını onaylar ve merkezi atama `%80 GANO + %20 tercih sırası` puanıyla yapılır.
 
 ## Özellikler
 
-- Öğrenci self-register akışı: ad soyad, e-posta, şifre, giriş yılı ve transkript PDF.
+- Öğrenci self-register akışı: ad soyad, e-posta, şifre, bölüm, giriş yılı ve transkript PDF.
 - PDF transkriptten metin tabanlı `GANO`/`GABNO` okuma.
 - Admin onayı bekleyen öğrenci durumu.
 - Admin panelinde danışman ekleme, öğrenci başvurusu onaylama/reddetme/düzenleme.
-- Tek bölüm modeli: `Yapay Zeka ve Veri Mühendisliği`.
-- Danışman ve öğrenci listelerinde bölüm izolasyonu.
+- Çok bölüm modeli: `Yapay Zeka ve Veri Mühendisliği` ve `Bilgisayar Mühendisliği`.
+- Danışman ve öğrenci listelerinde bölüm izolasyonu; bölüm dışı tercih, teklif ve atama yapılmaz.
 - Merkezi atamada açıklanabilir puanlama:
   - `GANO_puanı = (gano / 4) * 100`
   - `tercih_puanı`: ilk tercih `100`, son tercih `0`
@@ -60,11 +60,11 @@ Başlangıçta öğrenci yoktur. Öğrenciler giriş ekranındaki `Öğrenci Kay
 
 ## Öğrenci Akışı
 
-1. Öğrenci `Öğrenci Kaydı` sekmesinden kayıt oluşturur.
+1. Öğrenci `Öğrenci Kaydı` sekmesinden bölüm seçerek kayıt oluşturur.
 2. Sistem PDF metninde `GANO` veya Ankara Üniversitesi transkriptlerinde kullanılan `GABNO` alanını okur.
 3. Öğrenci hesabı `admin onayı bekliyor` durumunda açılır.
 4. Admin kaydı onaylayana kadar öğrenci hoca listesi göremez ve tercih kaydedemez.
-5. Admin onayından sonra öğrenci aktif danışmanları sıralı tercih listesine ekler.
+5. Admin onayından sonra öğrenci yalnız kendi bölümündeki aktif danışmanları sıralı tercih listesine ekler.
 
 ## Admin Akışı
 
@@ -74,6 +74,20 @@ Başlangıçta öğrenci yoktur. Öğrenciler giriş ekranındaki `Öğrenci Kay
 - Kontenjanları hesaplar ve merkezi yerleştirmeyi çalıştırır.
 - Atama loglarında puan detaylarını izler.
 
+## Atama Test Case Datasetleri
+
+Hocanın istediği algoritma senaryoları `docs/assignment_cases/` altında CSV olarak kayıtlıdır. Her case aynı dosya yapısını kullanır: `departments.csv`, `faculty.csv`, `students.csv`, `preferences.csv`, `expected_summary.csv`.
+
+Ana setler:
+
+- `01_popular_two_advisors`: iki hocanın çok yoğun talep gördüğü 22 öğrencilik YZVM senaryosu.
+- `02_happy_path_equal`: 40 öğrencinin 4 hocaya eşit dağıldığı happy path.
+- `03_yzvm_40_realistic`: YZVM için 40 kontenjanlı dengesiz tercih senaryosu.
+- `04_computer_engineering_110`: Bilgisayar Mühendisliği için 110 öğrenci / 10 hoca senaryosu.
+- `05_capacity_*`: 100, 500, 1000 ve 5000 öğrenci kapasiteli benchmark setleri.
+
+Ek edge-case setleri pending/rejected öğrenciler, pasif hoca, fallback, tie-break ve çok bölüm izolasyonunu ölçer.
+
 ## Veritabanı Notu
 
 SQLite dosyaları repo dışında tutulur. Uygulama ilk açılışta `backend/db/schema.sql` ve `backend/db/seed.sql` üzerinden veritabanını oluşturur.
@@ -82,5 +96,7 @@ SQLite dosyaları repo dışında tutulur. Uygulama ilk açılışta `backend/db
 
 ```bash
 node --check backend/routes/auth.js backend/routes/admin.js backend/routes/students.js backend/routes/faculty.js backend/engine/assignment.js backend/db/database.js
+node --check docs/assignment_case_runner.cjs docs/generate_assignment_cases.cjs
+node docs/assignment_case_runner.cjs --all
 cd frontend && npm run lint && npm run build
 ```

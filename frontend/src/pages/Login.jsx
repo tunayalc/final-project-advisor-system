@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, FileText, Lock, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
 import api from '../api';
@@ -11,14 +11,44 @@ export default function Login({ onLogin }) {
     full_name: '',
     email: '',
     password: '',
+    department_id: '',
     entry_year: String(new Date().getFullYear()),
     transcript: null,
   });
+  const [departments, setDepartments] = useState([]);
   const [error, setError] = useState('');
   const [registerError, setRegisterError] = useState('');
   const [loading, setLoading] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    api.get('/auth/departments')
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setDepartments(response.data);
+        if (response.data.length > 0) {
+          setRegisterForm((current) => ({
+            ...current,
+            department_id: current.department_id || String(response.data[0].id),
+          }));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setRegisterError('Bölüm listesi yüklenemedi.');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -61,6 +91,7 @@ export default function Login({ onLogin }) {
       formData.append('full_name', registerForm.full_name);
       formData.append('email', registerForm.email);
       formData.append('password', registerForm.password);
+      formData.append('department_id', registerForm.department_id);
       formData.append('entry_year', registerForm.entry_year);
       formData.append('transcript', registerForm.transcript);
 
@@ -221,6 +252,23 @@ export default function Login({ onLogin }) {
 
               <div className="duo-grid align-start">
                 <label className="field-block">
+                  <span>Bölüm</span>
+                  <select
+                    className="app-input"
+                    value={registerForm.department_id}
+                    onChange={(event) => updateRegisterForm('department_id', event.target.value)}
+                    required
+                  >
+                    <option value="">Bölüm seçin</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="field-block">
                   <span>Şifre</span>
                   <input
                     type="password"
@@ -231,7 +279,9 @@ export default function Login({ onLogin }) {
                     required
                   />
                 </label>
+              </div>
 
+              <div className="duo-grid align-start">
                 <label className="field-block">
                   <span>Giriş yılı</span>
                   <input
@@ -244,11 +294,6 @@ export default function Login({ onLogin }) {
                     required
                   />
                 </label>
-              </div>
-
-              <div className="demo-box">
-                <p><strong>Bölüm</strong></p>
-                <p>Yapay Zeka ve Veri Mühendisliği</p>
               </div>
 
               <label className="field-block">

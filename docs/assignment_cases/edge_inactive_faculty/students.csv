@@ -1,0 +1,5 @@
+id,user_id,department_id,full_name,email,gano,entry_year,approval_status,is_assigned
+1,2001,1,YZVM Ogrenci 0001,ogrenci1@case.local,4.00,2023,approved,0
+2,2002,1,YZVM Ogrenci 0002,ogrenci2@case.local,3.98,2024,approved,0
+3,2003,1,YZVM Ogrenci 0003,ogrenci3@case.local,3.96,2023,approved,0
+4,2004,1,YZVM Ogrenci 0004,ogrenci4@case.local,3.94,2024,approved,0

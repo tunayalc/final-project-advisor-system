@@ -1,0 +1,26 @@
+id,user_id,department_id,full_name,email,is_active
+1,1001,1,YZVM Hoca 01,hoca1@case.local,1
+2,1002,1,YZVM Hoca 02,hoca2@case.local,1
+3,1003,1,YZVM Hoca 03,hoca3@case.local,1
+4,1004,1,YZVM Hoca 04,hoca4@case.local,1
+5,1005,1,YZVM Hoca 05,hoca5@case.local,1
+6,1006,1,YZVM Hoca 06,hoca6@case.local,1
+7,1007,1,YZVM Hoca 07,hoca7@case.local,1
+8,1008,1,YZVM Hoca 08,hoca8@case.local,1
+9,1009,1,YZVM Hoca 09,hoca9@case.local,1
+10,1010,1,YZVM Hoca 10,hoca10@case.local,1
+11,1011,1,YZVM Hoca 11,hoca11@case.local,1
+12,1012,1,YZVM Hoca 12,hoca12@case.local,1
+13,1013,1,YZVM Hoca 13,hoca13@case.local,1
+14,1014,1,YZVM Hoca 14,hoca14@case.local,1
+15,1015,1,YZVM Hoca 15,hoca15@case.local,1
+16,1016,1,YZVM Hoca 16,hoca16@case.local,1
+17,1017,1,YZVM Hoca 17,hoca17@case.local,1
+18,1018,1,YZVM Hoca 18,hoca18@case.local,1
+19,1019,1,YZVM Hoca 19,hoca19@case.local,1
+20,1020,1,YZVM Hoca 20,hoca20@case.local,1
+21,1021,1,YZVM Hoca 21,hoca21@case.local,1
+22,1022,1,YZVM Hoca 22,hoca22@case.local,1
+23,1023,1,YZVM Hoca 23,hoca23@case.local,1
+24,1024,1,YZVM Hoca 24,hoca24@case.local,1
+25,1025,1,YZVM Hoca 25,hoca25@case.local,1
