@@ -5,7 +5,7 @@ React, Node.js ve SQLite ile geliştirilmiş danışman atama sistemi. Öğrenci
 ## Özellikler
 
 - Öğrenci self-register akışı: ad soyad, e-posta, şifre, giriş yılı ve transkript PDF.
-- PDF transkriptten metin tabanlı `GANO` okuma.
+- PDF transkriptten metin tabanlı `GANO`/`GABNO` okuma.
 - Admin onayı bekleyen öğrenci durumu.
 - Admin panelinde danışman ekleme, öğrenci başvurusu onaylama/reddetme/düzenleme.
 - Tek bölüm modeli: `Yapay Zeka ve Veri Mühendisliği`.
@@ -61,7 +61,7 @@ Başlangıçta öğrenci yoktur. Öğrenciler giriş ekranındaki `Öğrenci Kay
 ## Öğrenci Akışı
 
 1. Öğrenci `Öğrenci Kaydı` sekmesinden kayıt oluşturur.
-2. Sistem PDF metninde `GANO` alanını okur.
+2. Sistem PDF metninde `GANO` veya Ankara Üniversitesi transkriptlerinde kullanılan `GABNO` alanını okur.
 3. Öğrenci hesabı `admin onayı bekliyor` durumunda açılır.
 4. Admin kaydı onaylayana kadar öğrenci hoca listesi göremez ve tercih kaydedemez.
 5. Admin onayından sonra öğrenci aktif danışmanları sıralı tercih listesine ekler.

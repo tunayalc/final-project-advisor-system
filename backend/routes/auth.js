@@ -51,12 +51,12 @@ function normalizePersonName(value) {
 }
 
 function extractGano(text) {
-    const match = String(text || '').match(/\bGANO\b[^0-9]{0,80}([0-4](?:[.,]\d{1,2})?)/i);
-    if (!match) {
+    const matches = [...String(text || '').matchAll(/\b(?:GANO|GABNO)\b[^0-9]{0,80}([0-4](?:[.,]\d{1,2})?)/gi)];
+    if (matches.length === 0) {
         return null;
     }
 
-    const value = Number(match[1].replace(',', '.'));
+    const value = Number(matches[matches.length - 1][1].replace(',', '.'));
     if (!Number.isFinite(value) || value < 0 || value > 4) {
         return null;
     }
@@ -65,6 +65,10 @@ function extractGano(text) {
 }
 
 function extractTranscriptName(text) {
+    const lines = String(text || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
     const patterns = [
         /(?:Adı\s*Soyadı|Ad\s*Soyad(?:ı)?|Öğrenci\s*Adı\s*Soyadı)\s*[:\-]?\s*([^\n\r]+)/i,
         /(?:Name\s*Surname|Student\s*Name)\s*[:\-]?\s*([^\n\r]+)/i
@@ -74,6 +78,33 @@ function extractTranscriptName(text) {
         const match = String(text || '').match(pattern);
         if (match?.[1]) {
             return match[1].replace(/\s+/g, ' ').trim();
+        }
+    }
+
+    for (const [index, line] of lines.entries()) {
+        if (!/(^|\s)Ad[ıi](\s|$)/i.test(line)) {
+            continue;
+        }
+
+        const givenName = line
+            .replace(/(^|\s)Ad[ıi](\s|$)/ig, ' ')
+            .replace(/[:\-\t]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (!givenName) {
+            continue;
+        }
+
+        const surname = [...lines.slice(Math.max(0, index - 12), index)]
+            .reverse()
+            .find((candidate) => (
+                /^[A-ZÇĞİÖŞÜ\s'-]{2,}$/.test(candidate) &&
+                !/TÜRKİYE|CUMHURİYETİ|ÜNİVERSİTESİ|TRANSKRİPT|ÖĞRENCİ|DURUM|BELGESİ/.test(candidate)
+            ));
+
+        if (surname) {
+            return `${givenName} ${surname}`.replace(/\s+/g, ' ').trim();
         }
     }
 
