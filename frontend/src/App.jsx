@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
@@ -48,7 +48,12 @@ function ProtectedRoute({ children, allowedRoles }) {
 
 function App() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(() => readStoredSession().user);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
 
   useEffect(() => {
     if (window.location.pathname === '/') {

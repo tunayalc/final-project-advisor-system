@@ -35,7 +35,7 @@ export default function Navbar({ user, onLogout, onOpenPasswordDialog }) {
   return (
     <nav className="topbar">
       <button className="brand-lockup" type="button" onClick={() => navigate('/')}>
-        <div className="brand-mark">AU</div>
+        <div className="brand-mark">AÜ</div>
         <div className="brand-copy">
           <span className="eyebrow">Ankara Üniversitesi</span>
           <strong>Danışman Atama Sistemi</strong>

@@ -114,11 +114,11 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-grid animate-fade-in">
       <section className="login-brand">
-        <p className="eyebrow">Kurumsal Erişim</p>
-        <h1>Danışmanlık atama sürecini tek merkezden yönetin.</h1>
+        <p className="eyebrow">Ankara Üniversitesi</p>
+        <h1>Danışmanlık atama süreci için kurumsal yönetim paneli.</h1>
         <p className="muted-copy">
-          Öğrenci tercihleri, danışman teklifleri, kontenjan kararları ve merkezi yerleştirme
-          adımları aynı operasyon akışı içinde izlenir.
+          Öğrenci başvuruları, danışman tercihleri, kontenjan kararları ve merkezi yerleştirme
+          adımları Ankara Üniversitesi akademik işleyişine uygun tek akışta izlenir.
         </p>
 
         <div className="feature-stack">
