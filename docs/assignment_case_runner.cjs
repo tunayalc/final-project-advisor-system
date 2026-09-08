@@ -128,7 +128,7 @@ function loadBackendForDb(dbPath, quiet) {
     console.log = () => {};
   }
 
-  const { getDb } = require(path.join(ROOT_DIR, 'backend', 'db', 'database'));
+  const { getDb } = require(path.join(ROOT_DIR, 'backend', 'db', 'sqlite'));
   const engine = require(path.join(ROOT_DIR, 'backend', 'engine', 'assignment'));
   const db = getDb();
 
@@ -343,7 +343,7 @@ function invariantChecks(db, data, stats, durationMs) {
   };
 }
 
-function runCase(caseName, options = {}) {
+async function runCase(caseName, options = {}) {
   const data = loadCase(caseName);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `assignment-case-${caseName}-`));
   const dbPath = path.join(tempDir, 'case.db');
@@ -355,9 +355,9 @@ function runCase(caseName, options = {}) {
     resetDb(db);
     insertCaseData(db, data);
 
-    engine.calculateQuotas();
+    await engine.calculateQuotas();
     const startedAt = Date.now();
-    const stats = engine.runAssignment();
+    const stats = await engine.runAssignment();
     const durationMs = Date.now() - startedAt;
     const checks = invariantChecks(db, data, stats, durationMs);
     const status = checks.failures.length === 0 ? 'PASS' : 'FAIL';
@@ -439,7 +439,7 @@ function printHuman(results) {
   });
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   if (args.all) {
@@ -460,7 +460,7 @@ function main() {
     process.exit(1);
   }
 
-  const result = runCase(args.caseName, args);
+  const result = await runCase(args.caseName, args);
   if (args.json) {
     console.log(JSON.stringify(result));
   } else {

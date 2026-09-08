@@ -2,7 +2,7 @@ require('./config');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { getDb } = require('./db/database');
+const { getDb, initializeDb } = require('./db/database');
 
 const authRoutes = require('./routes/auth');
 const studentRoutes = require('./routes/students');
@@ -15,11 +15,8 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Database connection implicitly
-getDb();
-
-app.get('/api/health', (req, res) => {
-    getDb().prepare('SELECT 1').get();
+app.get('/api/health', async (req, res) => {
+    await getDb().prepare('SELECT 1').get();
     res.json({ status: 'ok' });
 });
 
@@ -43,6 +40,9 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Beklenmeyen bir hata oluştu.' });
 });
 
-app.listen(PORT, () => {
-    console.log(`✅ Backend sunucusu http://localhost:${PORT} adresinde çalışıyor.`);
+initializeDb().then(() => {
+    app.listen(PORT, () => console.log(`Backend sunucusu ${PORT} portunda çalışıyor.`));
+}).catch(() => {
+    console.error('Veritabanı başlatılamadı. Bağlantı ve kurulum ayarlarını kontrol edin.');
+    process.exit(1);
 });

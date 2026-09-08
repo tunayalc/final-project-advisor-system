@@ -56,10 +56,10 @@ function App() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (window.location.pathname === '/') {
+    if (location.pathname === '/') {
       navigate(user ? (DASHBOARD_BY_ROLE[user.role] || '/login') : '/login');
     }
-  }, [navigate, user]);
+  }, [navigate, user, location.pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');

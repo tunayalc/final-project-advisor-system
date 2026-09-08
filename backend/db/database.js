@@ -1,109 +1,95 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
-
-const DEFAULT_DB_PATH = path.join(__dirname, 'danisman_atama.db');
-const DB_PATH = process.env.DB_PATH
-    ? path.resolve(process.env.DB_PATH)
-    : DEFAULT_DB_PATH;
-const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
-const { CORE_FACULTY } = require('./faculty-roster');
-const RETIRED_EMAILS = ["ahmet.yilmaz@ankara.edu.tr","ayse.demir@ankara.edu.tr","mehmet.kaya@ankara.edu.tr","selin.yildiz@ankara.edu.tr","cem.arslan@ankara.edu.tr","deniz.kurt@ankara.edu.tr","elif.ozkan@ankara.edu.tr","furkan.celik@ankara.edu.tr","gizem.sahin@ankara.edu.tr","hakan.koc@ankara.edu.tr","irem.akyol@ankara.edu.tr","kaan.dogan@ankara.edu.tr","leyla.tas@ankara.edu.tr","mert.erdem@ankara.edu.tr","ikok@ankara.edu.tr"];
-
-let db;
-
-function hasColumn(tableName, columnName) {
-    const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
-    return columns.some((column) => column.name === columnName);
-}
-
-function migrateDb() {
-    db.prepare("INSERT OR IGNORE INTO departments (id, name) VALUES (?, ?)").run(1, 'Yapay Zeka ve Veri Mühendisliği');
-    db.prepare("INSERT OR IGNORE INTO departments (name) VALUES (?)").run('Yapay Zeka ve Veri Mühendisliği');
-
-    if (!hasColumn('faculty', 'is_active')) {
-        db.prepare('ALTER TABLE faculty ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1').run();
-    }
-
-    if (!hasColumn('students', 'approval_status')) {
-        db.prepare("ALTER TABLE students ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'").run();
-    }
-
-    if (!hasColumn('students', 'transcript_full_name')) {
-        db.prepare("ALTER TABLE students ADD COLUMN transcript_full_name TEXT DEFAULT ''").run();
-    }
-
-    if (!hasColumn('students', 'transcript_warning')) {
-        db.prepare("ALTER TABLE students ADD COLUMN transcript_warning TEXT DEFAULT ''").run();
-    }
-    for (const column of ['transcript_university', 'transcript_department']) {
-        if (!hasColumn('students', column)) db.exec(`ALTER TABLE students ADD COLUMN ${column} TEXT DEFAULT ''`);
-    }
-    if (!hasColumn('students', 'transcript_verified_at')) {
-        db.exec('ALTER TABLE students ADD COLUMN transcript_verified_at DATETIME');
-    }
-}
-
-function ensureCoreFaculty() {
-    const bcrypt = require('bcryptjs');
-    const crypto = require('crypto');
-    const insertUser = db.prepare(
-        'INSERT OR IGNORE INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)'
-    );
-    const getUser = db.prepare('SELECT id FROM users WHERE email = ? AND role = ?');
-    const getDepartment = db.prepare('SELECT id FROM departments WHERE name = ?');
-    const insertFaculty = db.prepare(`
-        INSERT OR IGNORE INTO faculty (user_id, department_id, expertise_keywords, base_quota, current_quota, is_active)
-        VALUES (?, ?, ?, 0, 0, 1)
-    `);
-
-    db.transaction(() => {
-        // Preserve historical assignments; retired/demo accounts cannot be selected.
-        for (const email of RETIRED_EMAILS) {
-            db.prepare('UPDATE faculty SET is_active = 0 WHERE user_id IN (SELECT id FROM users WHERE email = ?)').run(email);
-        }
-        CORE_FACULTY.forEach(([email, fullName, departmentName, expertiseKeywords]) => {
-            if (!getUser.get(email, 'hoca')) {
-                insertUser.run(email, bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), 'hoca', fullName);
-            }
-            const user = getUser.get(email, 'hoca');
-            const department = getDepartment.get(departmentName);
-            if (user && department) {
-                insertFaculty.run(user.id, department.id, expertiseKeywords);
-            }
-        });
-    })();
-}
+const { AsyncLocalStorage } = require('node:async_hooks');
+const fs = require('node:fs');
+const path = require('node:path');
+const context = new AsyncLocalStorage();
+let database;
+let initialization;
 
 function getDb() {
-    if (!db) {
-        fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-        db = new Database(DB_PATH);
-        db.pragma('journal_mode = WAL');
-        db.pragma('foreign_keys = ON');
-        initializeDb();
-    }
-    return db;
+    if (database) return database;
+    let tail = Promise.resolve();
+    const exclusive = async (callback) => {
+        const previous = tail;
+        let release;
+        tail = new Promise(resolve => { release = resolve; });
+        await previous;
+        try { return await callback(); } finally { release(); }
+    };
+    const postgres = Boolean(process.env.DATABASE_URL);
+    let pool;
+    let sqlite;
+    if (postgres) {
+        const { Pool, types } = require('pg');
+        types.setTypeParser(20, Number);
+        pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            max: 5,
+            connectionTimeoutMillis: 15000,
+            idleTimeoutMillis: 30000,
+            options: '-c search_path=advisor -c statement_timeout=30000',
+            ssl: { rejectUnauthorized: true, ca: fs.readFileSync(path.join(__dirname, 'supabase-ca.crt'), 'utf8') },
+        });
+        pool.on('error', () => console.error('Veritabanı bağlantısı kesildi.'));
+    } else sqlite = require('./sqlite').getDb();
+    const query = async (sql, params = [], mode = 'all') => {
+        const execute = async () => {
+            if (!postgres) return sqlite.prepare(sql)[mode](...params);
+            let index = 0;
+            let statement = sql.replace(/'([^']|'')*'|\?/g, token => token === '?' ? `$${++index}` : token);
+            const ignore = /INSERT\s+OR\s+IGNORE/i.test(statement);
+            statement = statement.replace(/INSERT\s+OR\s+IGNORE/i, 'INSERT').trim().replace(/;$/, '');
+            if (ignore) statement += ' ON CONFLICT DO NOTHING';
+            if (mode === 'run' && /^INSERT\s/i.test(statement)) statement += ' RETURNING id';
+            try {
+                const result = await (context.getStore()?.client || pool).query(statement, params);
+                if (mode === 'get') return result.rows[0];
+                if (mode === 'run') return { changes: result.rowCount, lastInsertRowid: result.rows[0]?.id };
+                return result.rows;
+            } catch (error) {
+                if (error.code === '23505') error.code = 'SQLITE_CONSTRAINT_UNIQUE';
+                throw error;
+            }
+        };
+        return context.getStore() || postgres ? execute() : exclusive(execute);
+    };
+    database = {
+        prepare: sql => ({
+            get: (...params) => query(sql, params, 'get'),
+            all: (...params) => query(sql, params, 'all'),
+            run: (...params) => query(sql, params, 'run'),
+        }),
+        transaction: callback => async (...args) => {
+            if (context.getStore()) return callback(...args);
+            const execute = async () => {
+                const client = postgres ? await pool.connect() : null;
+                try {
+                    if (client) {
+                        await client.query('BEGIN');
+                        // Serialize writes across backend instances, including placement.
+                        await client.query('SELECT pg_advisory_xact_lock(74182901)');
+                    } else sqlite.exec('BEGIN IMMEDIATE');
+                    const result = await context.run({ client }, () => callback(...args));
+                    if (client) await client.query('COMMIT'); else sqlite.exec('COMMIT');
+                    return result;
+                } catch (error) {
+                    if (client) await client.query('ROLLBACK'); else sqlite.exec('ROLLBACK');
+                    throw error;
+                } finally { client?.release(); }
+            };
+            return postgres ? execute() : exclusive(execute);
+        },
+        close: () => postgres ? pool.end() : sqlite.close(),
+        initialize: async () => {
+            if (!postgres) return;
+            await pool.query(fs.readFileSync(path.join(__dirname, 'schema.postgres.sql'), 'utf8'));
+            await require('./seed-postgres')(database);
+        },
+    };
+    return database;
 }
 
 function initializeDb() {
-    const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
-    db.exec(schema);
-    migrateDb();
-
-    // Fresh installations require an explicit administrator password.
-    const adminCount = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get().count;
-    if (adminCount === 0) {
-        const password = process.env.ADMIN_PASSWORD;
-        if (!password || password.length < 12) {
-            throw new Error('İlk kurulum için ADMIN_PASSWORD en az 12 karakter olmalıdır.');
-        }
-        const bcrypt = require('bcryptjs');
-        db.prepare('INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)')
-            .run((process.env.ADMIN_EMAIL || 'admin@ankara.edu.tr').trim().toLowerCase(), bcrypt.hashSync(password, 12), 'admin', 'Sistem Yöneticisi');
-    }
-
-    ensureCoreFaculty();
+    initialization ||= getDb().initialize();
+    return initialization;
 }
-
-module.exports = { getDb };
+module.exports = { getDb, initializeDb };
