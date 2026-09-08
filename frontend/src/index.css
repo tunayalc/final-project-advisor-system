@@ -417,3 +417,18 @@ button, input, select { font: inherit; }
   .panel, .hero-banner, .login-panel { padding: 20px; }
   .brand-lockup, .user-badge { width: 100%; justify-content: center; }
 }
+
+.assignment-guide { margin-top: 1.5rem; }
+.assignment-guide h3 { margin-top: 1.5rem; }
+.guide-steps { padding-left: 1.25rem; line-height: 1.7; }
+.guide-steps li + li { margin-top: 0.85rem; }
+.guide-scores { display: grid; gap: 0.85rem; }
+.guide-scores dt { font-weight: 700; }
+.guide-scores dd { margin: 0.25rem 0 0; line-height: 1.6; }
+.login-panel { align-self: start; }
+.assignment-guide { grid-column: 1 / -1; }
+@media (min-width: 900px) {
+  .guide-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+  .guide-steps li + li { margin-top: 0; }
+  .guide-scores { grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+}

@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS students (
     approval_status TEXT NOT NULL DEFAULT 'approved' CHECK(approval_status IN ('pending', 'approved', 'rejected')),
     transcript_full_name TEXT DEFAULT '',
     transcript_warning TEXT DEFAULT '',
+    transcript_university TEXT DEFAULT '',
+    transcript_department TEXT DEFAULT '',
+    transcript_verified_at DATETIME,
     is_assigned INTEGER DEFAULT 0,
     assigned_faculty_id INTEGER REFERENCES faculty(id)
 );

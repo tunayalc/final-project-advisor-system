@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'danisman-atama-secret-key-2024';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32 || JWT_SECRET === 'danisman-atama-secret-key-2024') {
+    throw new Error('JWT_SECRET en az 32 karakterli, rastgele bir değer olmalıdır.');
+}
 
 // JWT doğrulama middleware
 function authenticate(req, res, next) {

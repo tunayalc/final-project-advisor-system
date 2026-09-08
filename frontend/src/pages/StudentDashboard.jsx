@@ -169,6 +169,19 @@ export default function StudentDashboard({ user }) {
 
       {notice.text && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
 
+      {profile.transcript_verified_at && (
+        <section className="panel" aria-label="Transkriptten okunan bilgiler">
+          <h2>Transkript bilgileriniz</h2>
+          <p className="muted-copy">Dört bilgi kontrol edildi ve hesabınız otomatik onaylandı.</p>
+          <div className="detail-stack">
+            <div className="detail-row"><span>Ad soyad</span><strong>{profile.transcript_full_name}</strong></div>
+            <div className="detail-row"><span>GANO</span><strong>{Number(profile.gano).toFixed(2)}</strong></div>
+            <div className="detail-row"><span>Üniversite</span><strong>{profile.transcript_university}</strong></div>
+            <div className="detail-row"><span>Bölüm</span><strong>{profile.transcript_department}</strong></div>
+          </div>
+        </section>
+      )}
+
       {!isApproved ? (
         <div className="duo-grid">
           <section className="panel emphasis-panel">

@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const { PDFParse } = require('pdf-parse');
+const { DEPARTMENT, TranscriptError, extractTranscriptInfo } = require('../services/transcript');
 const { getDb } = require('../db/database');
 const { authenticate, JWT_SECRET } = require('../middleware/auth');
 
@@ -31,110 +31,11 @@ function handleTranscriptUpload(req, res, next) {
     });
 }
 
-function normalizePersonName(value) {
-    return String(value || '')
-        .trim()
-        .replace(/[çÇ]/g, 'c')
-        .replace(/[ğĞ]/g, 'g')
-        .replace(/[ıİiI]/g, 'i')
-        .replace(/[öÖ]/g, 'o')
-        .replace(/[şŞ]/g, 's')
-        .replace(/[üÜ]/g, 'u')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toUpperCase();
-}
-
-function extractGano(text) {
-    const matches = [...String(text || '').matchAll(/\b(?:GANO|GABNO)\b[^0-9]{0,80}([0-4](?:[.,]\d{1,2})?)/gi)];
-    if (matches.length === 0) {
-        return null;
-    }
-
-    const value = Number(matches[matches.length - 1][1].replace(',', '.'));
-    if (!Number.isFinite(value) || value < 0 || value > 4) {
-        return null;
-    }
-
-    return Number(value.toFixed(2));
-}
-
-function extractTranscriptName(text) {
-    const lines = String(text || '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-    const patterns = [
-        /(?:Adı\s*Soyadı|Ad\s*Soyad(?:ı)?|Öğrenci\s*Adı\s*Soyadı)\s*[:\-]?\s*([^\n\r]+)/i,
-        /(?:Name\s*Surname|Student\s*Name)\s*[:\-]?\s*([^\n\r]+)/i
-    ];
-
-    for (const pattern of patterns) {
-        const match = String(text || '').match(pattern);
-        if (match?.[1]) {
-            return match[1].replace(/\s+/g, ' ').trim();
-        }
-    }
-
-    for (const [index, line] of lines.entries()) {
-        if (!/(^|\s)Ad[ıi](\s|$)/i.test(line)) {
-            continue;
-        }
-
-        const givenName = line
-            .replace(/(^|\s)Ad[ıi](\s|$)/ig, ' ')
-            .replace(/[:\-\t]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        if (!givenName) {
-            continue;
-        }
-
-        const surname = [...lines.slice(Math.max(0, index - 12), index)]
-            .reverse()
-            .find((candidate) => (
-                /^[A-ZÇĞİÖŞÜ\s'-]{2,}$/.test(candidate) &&
-                !/TÜRKİYE|CUMHURİYETİ|ÜNİVERSİTESİ|TRANSKRİPT|ÖĞRENCİ|DURUM|BELGESİ/.test(candidate)
-            ));
-
-        if (surname) {
-            return `${givenName} ${surname}`.replace(/\s+/g, ' ').trim();
-        }
-    }
-
-    return '';
-}
-
-async function extractTranscriptInfo(buffer) {
-    const parser = new PDFParse({ data: buffer });
-
-    try {
-        const result = await parser.getText();
-        const text = result.text || '';
-        const gano = extractGano(text);
-
-        if (gano === null) {
-            throw new Error('Transkript içinde GANO bilgisi okunamadı.');
-        }
-
-        return {
-            gano,
-            transcriptFullName: extractTranscriptName(text)
-        };
-    } finally {
-        await parser.destroy();
-    }
-}
-
 // GET /api/auth/departments
 router.get('/departments', (req, res) => {
     try {
         const db = getDb();
-        const departments = db.prepare('SELECT id, name FROM departments ORDER BY id ASC').all();
+        const departments = db.prepare('SELECT id, name FROM departments WHERE name = ?').all(DEPARTMENT);
         res.json(departments);
     } catch (err) {
         console.error('Departments error:', err);
@@ -160,6 +61,10 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
             return res.status(400).json({ error: 'Şifre en az 8 karakter olmalıdır.' });
         }
 
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254) {
+            return res.status(400).json({ error: 'Geçerli bir e-posta adresi girin.' });
+        }
+
         if (!Number.isInteger(departmentId) || departmentId <= 0) {
             return res.status(400).json({ error: 'Geçerli bir bölüm seçin.' });
         }
@@ -178,16 +83,12 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
             return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı.' });
         }
 
-        const department = db.prepare('SELECT id, name FROM departments WHERE id = ?').get(departmentId);
+        const department = db.prepare('SELECT id, name FROM departments WHERE id = ? AND name = ?').get(departmentId, DEPARTMENT);
         if (!department) {
-            return res.status(404).json({ error: 'Bölüm bulunamadı.' });
+            return res.status(400).json({ error: 'Kayıt yalnızca Yapay Zeka ve Veri Mühendisliği bölümüne açıktır.' });
         }
 
-        const transcriptInfo = await extractTranscriptInfo(req.file.buffer);
-        const transcriptWarning = transcriptInfo.transcriptFullName &&
-            normalizePersonName(transcriptInfo.transcriptFullName) !== normalizePersonName(normalizedName)
-            ? `Formdaki ad soyad ile transkriptte okunan ad farklı: ${transcriptInfo.transcriptFullName}`
-            : '';
+        const transcriptInfo = await extractTranscriptInfo(req.file.buffer, normalizedName);
 
         const password_hash = bcrypt.hashSync(String(password), 10);
         let userId;
@@ -196,7 +97,7 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
             const insertUser = db.prepare(
                 'INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)'
             );
-            const result = insertUser.run(normalizedEmail, password_hash, 'ogrenci', normalizedName);
+            const result = insertUser.run(normalizedEmail, password_hash, 'ogrenci', transcriptInfo.transcriptFullName);
             userId = result.lastInsertRowid;
 
             db.prepare(
@@ -207,54 +108,60 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
                     entry_year,
                     approval_status,
                     transcript_full_name,
-                    transcript_warning
-                ) VALUES (?, ?, ?, ?, 'pending', ?, ?)`
+                    transcript_warning,
+                    transcript_university,
+                    transcript_department,
+                    transcript_verified_at
+                ) VALUES (?, ?, ?, ?, 'approved', ?, '', ?, ?, CURRENT_TIMESTAMP)`
             ).run(
                 userId,
                 transcriptInfo.gano,
                 department.id,
                 parsedEntryYear,
                 transcriptInfo.transcriptFullName,
-                transcriptWarning
+                transcriptInfo.transcriptUniversity,
+                transcriptInfo.transcriptDepartment
             );
 
             db.prepare('INSERT INTO assignment_logs (student_id, action, details) VALUES ((SELECT id FROM students WHERE user_id = ?), ?, ?)')
-                .run(userId, 'STUDENT_REGISTER', `Öğrenci kaydı onay bekliyor. GANO: ${transcriptInfo.gano}`);
+                .run(userId, 'STUDENT_REGISTER', `Transkript alanları eşleşti, hesap otomatik onaylandı. GANO: ${transcriptInfo.gano}`);
         })();
 
         const token = jwt.sign(
-            { id: userId, email: normalizedEmail, role: 'ogrenci', full_name: normalizedName },
+            { id: userId, email: normalizedEmail, role: 'ogrenci', full_name: transcriptInfo.transcriptFullName },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
 
         res.status(201).json({
-            message: 'Kayıt başarılı. Admin onayı bekleniyor.',
+            message: 'Transkript bilgileriniz eşleşti. Hesabınız onaylandı; tercihlerinizi oluşturabilirsiniz.',
             token,
             user: {
                 id: userId,
                 email: normalizedEmail,
                 role: 'ogrenci',
-                full_name: normalizedName,
+                full_name: transcriptInfo.transcriptFullName,
                 profile: {
                     department_id: department.id,
                     department_name: department.name,
                     gano: transcriptInfo.gano,
                     entry_year: parsedEntryYear,
-                    approval_status: 'pending',
+                    approval_status: 'approved',
                     transcript_full_name: transcriptInfo.transcriptFullName,
-                    transcript_warning: transcriptWarning
+                    transcript_warning: '',
+                    transcript_university: transcriptInfo.transcriptUniversity,
+                    transcript_department: transcriptInfo.transcriptDepartment
                 }
             }
         });
     } catch (err) {
-        console.error('Register error:', err);
-        if (
-            err.message === 'Transkript PDF formatında olmalıdır.' ||
-            err.message === 'Transkript içinde GANO bilgisi okunamadı.'
-        ) {
-            return res.status(400).json({ error: err.message });
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı.' });
         }
+        if (err instanceof TranscriptError) {
+            return res.status(422).json({ error: err.message });
+        }
+        console.error('Register error:', err);
         res.status(500).json({ error: 'Sunucu hatası.' });
     }
 });
@@ -269,7 +176,7 @@ router.post('/login', (req, res) => {
             return res.status(400).json({ error: 'E-posta ve şifre gerekli.' });
         }
 
-        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email).trim().toLowerCase());
         if (!user) {
             return res.status(401).json({ error: 'Geçersiz e-posta veya şifre.' });
         }
@@ -277,6 +184,10 @@ router.post('/login', (req, res) => {
         const valid = bcrypt.compareSync(password, user.password_hash);
         if (!valid) {
             return res.status(401).json({ error: 'Geçersiz e-posta veya şifre.' });
+        }
+
+        if (user.role === 'hoca' && !db.prepare('SELECT id FROM faculty WHERE user_id = ? AND is_active = 1').get(user.id)) {
+            return res.status(403).json({ error: 'Danışman hesabı aktif değil.' });
         }
 
         const token = jwt.sign(

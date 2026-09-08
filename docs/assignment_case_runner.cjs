@@ -120,7 +120,8 @@ function loadCase(caseName) {
 
 function loadBackendForDb(dbPath, quiet) {
   process.env.DB_PATH = dbPath;
-  process.env.JWT_SECRET = 'assignment-case-runner-secret';
+  process.env.JWT_SECRET = 'assignment-case-runner-secret-isolated';
+  process.env.ADMIN_PASSWORD = 'AssignmentTest1234!';
 
   const originalLog = console.log;
   if (quiet) {
@@ -346,9 +347,11 @@ function runCase(caseName, options = {}) {
   const data = loadCase(caseName);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `assignment-case-${caseName}-`));
   const dbPath = path.join(tempDir, 'case.db');
+  let caseDb;
 
   try {
     const { db, engine } = loadBackendForDb(dbPath, options.json);
+    caseDb = db;
     resetDb(db);
     insertCaseData(db, data);
 
@@ -365,6 +368,10 @@ function runCase(caseName, options = {}) {
       ...checks,
     };
   } finally {
+    caseDb?.close();
+    if (path.dirname(path.resolve(tempDir)) !== path.resolve(os.tmpdir()) || !path.basename(tempDir).startsWith('assignment-case-')) {
+      throw new Error('Unexpected test cleanup directory.');
+    }
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }

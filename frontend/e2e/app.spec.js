@@ -8,10 +8,11 @@ function escapePdfText(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
-function makeTranscriptPdf({ fullName, label = 'GABNO', gano = '3,42' }) {
+function makeTranscriptPdf({ fullName, label = 'GABNO', gano = '3,42', university = 'Ankara Universitesi', department = 'Yapay Zeka ve Veri Muhendisligi' }) {
   const textOps = ['BT', '/F1 12 Tf', '72 760 Td'];
   [
-    'Ankara Universitesi Transkript Belgesi',
+    university,
+    department ? `Bolum: ${department}` : '',
     `Ad Soyad: ${fullName}`,
     `${label}: ${gano}`,
     'Belge sonu',
@@ -90,33 +91,7 @@ async function registerStudent(request, {
 }
 
 async function getAdminToken(request) {
-  return loginApi(request, 'admin@ankara.edu.tr', 'admin123');
-}
-
-async function approveStudent(request, email) {
-  const adminToken = await getAdminToken(request);
-  const applicationsResponse = await request.get(`${apiBaseUrl}/admin/student-applications`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
-  expect(applicationsResponse.status()).toBe(200);
-
-  const applications = await applicationsResponse.json();
-  const application = applications.find((item) => item.email === email);
-  expect(application).toBeTruthy();
-
-  const reviewResponse = await request.patch(`${apiBaseUrl}/admin/students/${application.id}/review`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: {
-      approval_status: 'approved',
-      full_name: application.full_name,
-      email: application.email,
-      gano: Number(application.gano),
-      entry_year: Number(application.entry_year),
-    },
-  });
-  expect(reviewResponse.status()).toBe(200);
-
-  return adminToken;
+  return loginApi(request, 'admin@ankara.edu.tr', 'AdminTest1234!');
 }
 
 async function saveFirstPreferences(request, token, count = 4) {
@@ -138,12 +113,62 @@ async function saveFirstPreferences(request, token, count = 4) {
   return preferences;
 }
 
+test('home page explains scoring and only offers the enabled department', async ({ page, request }) => {
+  await page.goto('/login');
+  await expect(page.getByRole('heading', { name: 'Danışman tercihi nasıl yapılır?' })).toBeVisible();
+  await expect(page.locator('.assignment-guide')).toContainText('84');
+  await expect(page.locator('.assignment-guide')).toContainText('GANO puanı × 0,80 + tercih puanı × 0,20');
+  await page.getByRole('button', { name: 'Öğrenci Kaydı' }).click();
+  await expect(page.getByLabel('Bölüm').locator('option')).toHaveCount(1);
+  const departments = await request.get(`${apiBaseUrl}/auth/departments`);
+  expect((await departments.json()).map(item => item.name)).toEqual(['Yapay Zeka ve Veri Mühendisliği']);
+  const token = await getAdminToken(request);
+  const blocked = await request.post(`${apiBaseUrl}/admin/departments`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { name: 'Bilgisayar Mühendisliği' },
+  });
+  expect(blocked.status()).toBe(403);
+});
+
+const invalidTranscripts = [
+  ['different name', { fullName: 'Baska Ogrenci' }],
+  ['missing name', { fullName: '' }],
+  ['different university', { university: 'Gazi Universitesi' }],
+  ['missing university', { university: '' }],
+  ['different department', { department: 'Bilgisayar Muhendisligi' }],
+  ['missing department', { department: '' }],
+  ['missing average', { gano: '' }],
+  ['invalid average', { gano: '4.50' }],
+];
+for (const [description, overrides] of invalidTranscripts) {
+  test(`registration rejects ${description} without creating an account`, async ({ request }) => {
+    const email = `invalid.${Date.now()}@ankara.edu.tr`;
+    const data = { full_name: 'Deniz Yilmaz', email, password: studentPassword, department_id: '1', entry_year: '2024' };
+    const submit = (options) => request.post(`${apiBaseUrl}/auth/register`, {
+      multipart: { ...data, transcript: { name: 'transcript.pdf', mimeType: 'application/pdf', buffer: makeTranscriptPdf({ fullName: data.full_name, ...options }) } },
+    });
+    const rejected = await submit(overrides);
+    expect(rejected.status()).toBe(422);
+    expect((await rejected.json()).error).toBeTruthy();
+    // The same email must remain available after a failed transcript check.
+    const accepted = await submit({});
+    expect(accepted.status()).toBe(201);
+    expect((await accepted.json()).user.profile.approval_status).toBe('approved');
+  });
+}
+
+test('registration rejects a forged department id and malformed PDF', async ({ request }) => {
+  const data = { full_name: 'Deniz Yilmaz', email: `badpdf.${Date.now()}@ankara.edu.tr`, password: studentPassword, department_id: '2', entry_year: '2024' };
+  const transcript = { name: 'transcript.pdf', mimeType: 'application/pdf', buffer: Buffer.from('not a pdf') };
+  expect((await request.post(`${apiBaseUrl}/auth/register`, { multipart: { ...data, transcript } })).status()).toBe(400);
+  expect((await request.post(`${apiBaseUrl}/auth/register`, { multipart: { ...data, department_id: '1', transcript } })).status()).toBe(422);
+});
+
 test('admin can log in, manage quotas, and no longer sees student creation', async ({ page }) => {
-  await login(page, 'admin@ankara.edu.tr', 'admin123');
+  await login(page, 'admin@ankara.edu.tr', 'AdminTest1234!');
 
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole('heading', { name: 'Yerleştirme ve kullanıcı yönetimi' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Bölüm ekle' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bölüm ekle' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Danışman ekle' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Onay bekleyen kayıtlar' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Öğrenci ekle' })).toHaveCount(0);
@@ -152,58 +177,16 @@ test('admin can log in, manage quotas, and no longer sees student creation', asy
   await expect(page.getByText(/Kontenjanlar güncellendi/i)).toBeVisible();
 });
 
-test('admin can create a new department', async ({ page }) => {
-  const uniqueId = Date.now();
-  const departmentName = `E2E Bölüm ${uniqueId}`;
-
-  await login(page, 'admin@ankara.edu.tr', 'admin123');
-  await expect(page).toHaveURL(/\/admin$/);
-
-  const departmentPanel = page.locator('section.panel', {
-    has: page.getByRole('heading', { name: 'Bölüm ekle' }),
-  });
-  await departmentPanel.getByLabel('Bölüm adı').fill(departmentName);
-  await departmentPanel.getByRole('button', { name: 'Bölüm ekle' }).click();
-  await expect(page.getByText(new RegExp(`${departmentName} bölümü eklendi`, 'i'))).toBeVisible();
-  await expect(departmentPanel.getByText(departmentName)).toBeVisible();
-
-  const createPanel = page.locator('section.panel', {
-    has: page.getByRole('heading', { name: 'Danışman ekle' }),
-  });
-  await createPanel.getByLabel('Bölüm').selectOption({ label: departmentName });
-});
-
-test('admin can create faculty under computer engineering department', async ({ page }) => {
-  const uniqueId = Date.now();
-  const facultyName = `E2E BM Hoca ${uniqueId}`;
-  const facultyEmail = `e2e.bm.hoca.${uniqueId}@ankara.edu.tr`;
-
-  await login(page, 'admin@ankara.edu.tr', 'admin123');
-  await expect(page).toHaveURL(/\/admin$/);
-
-  const createPanel = page.locator('section.panel', {
-    has: page.getByRole('heading', { name: 'Danışman ekle' }),
-  });
-  await createPanel.getByLabel('Bölüm').selectOption({ label: 'Bilgisayar Mühendisliği' });
-  await createPanel.getByLabel('Uzmanlık alanları').fill('Algoritmalar');
-  await createPanel.getByLabel('Ad soyad').fill(facultyName);
-  await createPanel.getByLabel('E-posta').fill(facultyEmail);
-  await createPanel.getByLabel('Geçici şifre').fill('Hoca1234!');
-  await createPanel.getByRole('button', { name: 'Danışman ekle' }).click();
-
-  await expect(page.getByText(new RegExp(`${facultyName} danışman olarak sisteme eklendi`, 'i'))).toBeVisible();
-});
-
-test('student registration uploads transcript PDF and lands on pending screen', async ({ page }) => {
+test('student registration automatically approves all four transcript fields', async ({ page }) => {
   const uniqueId = Date.now();
   const email = `e2e.register.${uniqueId}@ankara.edu.tr`;
-  const fullName = `E2E Register ${uniqueId}`;
+  const fullName = 'Deniz Yilmaz';
 
   await page.goto('/login');
   await page.getByRole('button', { name: 'Öğrenci Kaydı' }).click();
   await page.getByLabel('Ad soyad').fill(fullName);
   await page.getByLabel('E-posta adresi').fill(email);
-  await page.getByLabel('Bölüm').selectOption({ label: 'Bilgisayar Mühendisliği' });
+  await page.getByLabel('Bölüm').selectOption({ label: 'Yapay Zeka ve Veri Mühendisliği' });
   await page.getByLabel('Şifre').fill(studentPassword);
   await page.getByLabel('Giriş yılı').fill('2024');
   await page.getByLabel('Transkript PDF').setInputFiles({
@@ -214,40 +197,22 @@ test('student registration uploads transcript PDF and lands on pending screen', 
   await page.getByRole('button', { name: 'Öğrenci kaydı oluştur' }).click();
 
   await expect(page).toHaveURL(/\/student$/);
-  await expect(page.getByRole('heading', { name: 'Admin onayı bekleniyor' })).toBeVisible();
-  await expect(page.getByText('Okunan GANO')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Aktif danışmanlar' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Aktif danışmanlar' })).toBeVisible();
+  const transcriptPanel = page.getByRole('region', { name: 'Transkriptten okunan bilgiler' });
+  await expect(transcriptPanel).toContainText('Deniz Yilmaz');
+  await expect(transcriptPanel).toContainText('3.42');
+  await expect(transcriptPanel).toContainText('Ankara Üniversitesi');
+  await expect(transcriptPanel).toContainText('Yapay Zeka ve Veri Mühendisliği');
+  await page.reload();
+  await expect(transcriptPanel).toBeVisible();
 });
 
-test('admin approves a pending student application from the UI', async ({ page, request }) => {
-  const uniqueId = Date.now();
-  const email = `e2e.approve.${uniqueId}@ankara.edu.tr`;
-  const fullName = `E2E Approve ${uniqueId}`;
-
-  await registerStudent(request, { email, fullName, label: 'GANO', gano: '3.52' });
-  await login(page, 'admin@ankara.edu.tr', 'admin123');
-
-  await expect(page).toHaveURL(/\/admin$/);
-  await expect(page.getByRole('heading', { name: 'Onay bekleyen kayıtlar' })).toBeVisible();
-
-  const applicationsPanel = page.locator('section.panel', {
-    has: page.getByRole('heading', { name: 'Onay bekleyen kayıtlar' }),
-  });
-  const row = applicationsPanel.locator('tbody tr', { hasText: fullName });
-  await expect(row).toBeVisible();
-  await expect(row.locator('input[type="number"]').first()).toHaveValue('3.52');
-  await row.getByRole('button', { name: 'Onayla' }).click();
-  await expect(page.getByText(/Öğrenci kaydı güncellendi/i)).toBeVisible();
-  await expect(row).toHaveCount(0);
-});
-
-test('approved student can persist preferences after admin approval', async ({ page, request }) => {
+test('approved student can persist preferences without admin approval', async ({ page, request }) => {
   const uniqueId = Date.now();
   const email = `e2e.preferences.${uniqueId}@ankara.edu.tr`;
-  const fullName = `E2E Preferences ${uniqueId}`;
+  const fullName = 'Deniz Yilmaz';
 
   await registerStudent(request, { email, fullName, label: 'GABNO', gano: '3,65' });
-  await approveStudent(request, email);
   await login(page, email, studentPassword);
 
   await expect(page).toHaveURL(/\/student$/);
@@ -255,6 +220,9 @@ test('approved student can persist preferences after admin approval', async ({ p
 
   const firstFacultyName = (await page.locator('.list-card h3').first().textContent())?.trim();
   expect(firstFacultyName).toBeTruthy();
+  await expect(page.locator('.list-card')).toHaveCount(9);
+  await expect(page.locator('.list-card', { hasText: 'Ebubekir Kaya' })).toBeVisible();
+  await expect(page.locator('.list-card', { hasText: 'İbrahim Kök' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Ekle' }).first().click();
   await page.getByRole('button', { name: 'Tercihleri kaydet' }).click();
@@ -266,37 +234,14 @@ test('approved student can persist preferences after admin approval', async ({ p
   await expect(page.getByText(firstFacultyName)).toBeVisible();
 });
 
-test('approved student only sees advisors from the selected department', async ({ page, request }) => {
-  const uniqueId = Date.now();
-  const email = `e2e.department.${uniqueId}@ankara.edu.tr`;
-  const fullName = `E2E Department ${uniqueId}`;
-
-  await registerStudent(request, {
-    email,
-    fullName,
-    label: 'GABNO',
-    gano: '3,44',
-    departmentId: 2,
-  });
-  await approveStudent(request, email);
-  await login(page, email, studentPassword);
-
-  await expect(page).toHaveURL(/\/student$/);
-  await expect(page.getByText('Bilgisayar Mühendisliği bölümünde kayıtlı öğrenci profili')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Aktif danışmanlar' })).toBeVisible();
-  expect(await page.locator('.list-card').count()).toBeGreaterThanOrEqual(10);
-  await expect(page.locator('.list-card', { hasText: 'Cem Arslan' })).toBeVisible();
-  await expect(page.locator('.list-card', { hasText: 'Ahmet Yılmaz' })).toHaveCount(0);
-});
-
 test('scored assignment locks an assigned student and writes score details', async ({ page, request }) => {
   const uniqueId = Date.now();
   const email = `e2e.assigned.${uniqueId}@ankara.edu.tr`;
-  const fullName = `E2E Assigned ${uniqueId}`;
+  const fullName = 'Deniz Yilmaz';
 
   const registerResponse = await registerStudent(request, { email, fullName, label: 'GABNO', gano: '3,91' });
   const studentToken = registerResponse.token;
-  const adminToken = await approveStudent(request, email);
+  const adminToken = await getAdminToken(request);
   const preferences = await saveFirstPreferences(request, studentToken);
 
   const quotaResponse = await request.post(`${apiBaseUrl}/admin/calculate-quotas`, {

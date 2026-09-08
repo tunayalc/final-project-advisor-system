@@ -7,23 +7,8 @@ const DB_PATH = process.env.DB_PATH
     ? path.resolve(process.env.DB_PATH)
     : DEFAULT_DB_PATH;
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
-const SEED_PATH = path.join(__dirname, 'seed.sql');
-const CORE_FACULTY = [
-    ['ahmet.yilmaz@ankara.edu.tr', 'Prof. Dr. Ahmet Yılmaz', 'Yapay Zeka ve Veri Mühendisliği', 'Yapay Zeka, Makine Öğrenmesi, Derin Öğrenme'],
-    ['ayse.demir@ankara.edu.tr', 'Doç. Dr. Ayşe Demir', 'Yapay Zeka ve Veri Mühendisliği', 'Veri Madenciliği, Büyük Veri, NLP'],
-    ['mehmet.kaya@ankara.edu.tr', 'Dr. Öğr. Üyesi Mehmet Kaya', 'Yapay Zeka ve Veri Mühendisliği', 'Veri Mühendisliği, Veri Tabanları, Dağıtık Sistemler'],
-    ['selin.yildiz@ankara.edu.tr', 'Prof. Dr. Selin Yıldız', 'Yapay Zeka ve Veri Mühendisliği', 'Bilgisayarlı Görü, Üretken Yapay Zeka, MLOps'],
-    ['cem.arslan@ankara.edu.tr', 'Prof. Dr. Cem Arslan', 'Bilgisayar Mühendisliği', 'Algoritmalar, Veri Yapıları, Rekabetçi Programlama'],
-    ['deniz.kurt@ankara.edu.tr', 'Doç. Dr. Deniz Kurt', 'Bilgisayar Mühendisliği', 'Bilgisayar Ağları, Dağıtık Sistemler, Bulut Bilişim'],
-    ['elif.ozkan@ankara.edu.tr', 'Dr. Öğr. Üyesi Elif Özkan', 'Bilgisayar Mühendisliği', 'Yazılım Mühendisliği, Gereksinim Analizi, Test Otomasyonu'],
-    ['furkan.celik@ankara.edu.tr', 'Prof. Dr. Furkan Çelik', 'Bilgisayar Mühendisliği', 'Siber Güvenlik, Kriptografi, Ağ Güvenliği'],
-    ['gizem.sahin@ankara.edu.tr', 'Doç. Dr. Gizem Şahin', 'Bilgisayar Mühendisliği', 'Veritabanları, Bilgi Sistemleri, Büyük Veri'],
-    ['hakan.koc@ankara.edu.tr', 'Dr. Öğr. Üyesi Hakan Koç', 'Bilgisayar Mühendisliği', 'İşletim Sistemleri, Paralel Programlama, Sistem Yazılımı'],
-    ['irem.akyol@ankara.edu.tr', 'Prof. Dr. İrem Akyol', 'Bilgisayar Mühendisliği', 'Grafik, İnsan Bilgisayar Etkileşimi, Oyun Teknolojileri'],
-    ['kaan.dogan@ankara.edu.tr', 'Doç. Dr. Kaan Doğan', 'Bilgisayar Mühendisliği', 'Yapay Zeka, Makine Öğrenmesi, Robotik'],
-    ['leyla.tas@ankara.edu.tr', 'Dr. Öğr. Üyesi Leyla Taş', 'Bilgisayar Mühendisliği', 'Programlama Dilleri, Derleyiciler, Formal Yöntemler'],
-    ['mert.erdem@ankara.edu.tr', 'Prof. Dr. Mert Erdem', 'Bilgisayar Mühendisliği', 'Mobil Sistemler, Web Teknolojileri, Nesnelerin İnterneti'],
-];
+const { CORE_FACULTY } = require('./faculty-roster');
+const RETIRED_EMAILS = ["ahmet.yilmaz@ankara.edu.tr","ayse.demir@ankara.edu.tr","mehmet.kaya@ankara.edu.tr","selin.yildiz@ankara.edu.tr","cem.arslan@ankara.edu.tr","deniz.kurt@ankara.edu.tr","elif.ozkan@ankara.edu.tr","furkan.celik@ankara.edu.tr","gizem.sahin@ankara.edu.tr","hakan.koc@ankara.edu.tr","irem.akyol@ankara.edu.tr","kaan.dogan@ankara.edu.tr","leyla.tas@ankara.edu.tr","mert.erdem@ankara.edu.tr","ikok@ankara.edu.tr"];
 
 let db;
 
@@ -34,9 +19,7 @@ function hasColumn(tableName, columnName) {
 
 function migrateDb() {
     db.prepare("INSERT OR IGNORE INTO departments (id, name) VALUES (?, ?)").run(1, 'Yapay Zeka ve Veri Mühendisliği');
-    db.prepare("INSERT OR IGNORE INTO departments (id, name) VALUES (?, ?)").run(2, 'Bilgisayar Mühendisliği');
     db.prepare("INSERT OR IGNORE INTO departments (name) VALUES (?)").run('Yapay Zeka ve Veri Mühendisliği');
-    db.prepare("INSERT OR IGNORE INTO departments (name) VALUES (?)").run('Bilgisayar Mühendisliği');
 
     if (!hasColumn('faculty', 'is_active')) {
         db.prepare('ALTER TABLE faculty ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1').run();
@@ -53,11 +36,17 @@ function migrateDb() {
     if (!hasColumn('students', 'transcript_warning')) {
         db.prepare("ALTER TABLE students ADD COLUMN transcript_warning TEXT DEFAULT ''").run();
     }
+    for (const column of ['transcript_university', 'transcript_department']) {
+        if (!hasColumn('students', column)) db.exec(`ALTER TABLE students ADD COLUMN ${column} TEXT DEFAULT ''`);
+    }
+    if (!hasColumn('students', 'transcript_verified_at')) {
+        db.exec('ALTER TABLE students ADD COLUMN transcript_verified_at DATETIME');
+    }
 }
 
 function ensureCoreFaculty() {
     const bcrypt = require('bcryptjs');
-    const hocaHash = bcrypt.hashSync('hoca123', 10);
+    const crypto = require('crypto');
     const insertUser = db.prepare(
         'INSERT OR IGNORE INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)'
     );
@@ -69,8 +58,14 @@ function ensureCoreFaculty() {
     `);
 
     db.transaction(() => {
+        // Preserve historical assignments; retired/demo accounts cannot be selected.
+        for (const email of RETIRED_EMAILS) {
+            db.prepare('UPDATE faculty SET is_active = 0 WHERE user_id IN (SELECT id FROM users WHERE email = ?)').run(email);
+        }
         CORE_FACULTY.forEach(([email, fullName, departmentName, expertiseKeywords]) => {
-            insertUser.run(email, hocaHash, 'hoca', fullName);
+            if (!getUser.get(email, 'hoca')) {
+                insertUser.run(email, bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), 'hoca', fullName);
+            }
             const user = getUser.get(email, 'hoca');
             const department = getDepartment.get(departmentName);
             if (user && department) {
@@ -82,6 +77,7 @@ function ensureCoreFaculty() {
 
 function getDb() {
     if (!db) {
+        fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
         db = new Database(DB_PATH);
         db.pragma('journal_mode = WAL');
         db.pragma('foreign_keys = ON');
@@ -95,22 +91,16 @@ function initializeDb() {
     db.exec(schema);
     migrateDb();
 
-    // Check if seed data is needed
-    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-    if (userCount === 0) {
-        const seed = fs.readFileSync(SEED_PATH, 'utf8');
-        db.exec(seed);
-
-        // Hash passwords properly for seed data
+    // Fresh installations require an explicit administrator password.
+    const adminCount = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get().count;
+    if (adminCount === 0) {
+        const password = process.env.ADMIN_PASSWORD;
+        if (!password || password.length < 12) {
+            throw new Error('İlk kurulum için ADMIN_PASSWORD en az 12 karakter olmalıdır.');
+        }
         const bcrypt = require('bcryptjs');
-
-        const adminHash = bcrypt.hashSync('admin123', 10);
-        const hocaHash = bcrypt.hashSync('hoca123', 10);
-
-        db.prepare('UPDATE users SET password_hash = ? WHERE role = ?').run(adminHash, 'admin');
-        db.prepare('UPDATE users SET password_hash = ? WHERE role = ?').run(hocaHash, 'hoca');
-
-        console.log('✅ Veritabanı seed verileri yüklendi.');
+        db.prepare('INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)')
+            .run((process.env.ADMIN_EMAIL || 'admin@ankara.edu.tr').trim().toLowerCase(), bcrypt.hashSync(password, 12), 'admin', 'Sistem Yöneticisi');
     }
 
     ensureCoreFaculty();

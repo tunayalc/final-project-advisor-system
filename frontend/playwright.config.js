@@ -17,7 +17,7 @@ export default defineConfig({
       timeout: 120000,
     },
     {
-      command: 'npm start -- --host 127.0.0.1',
+      command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1',
       port: 5173,
       reuseExistingServer: false,
       timeout: 120000,

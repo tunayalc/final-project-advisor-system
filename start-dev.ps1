@@ -1,41 +1,20 @@
-$ErrorActionPreference = 'Stop'
-
+﻿$ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-
+$nodeExe = (Get-Command node -ErrorAction Stop).Source
 $backendDir = Join-Path $repoRoot 'backend'
 $frontendDir = Join-Path $repoRoot 'frontend'
 
-function Ensure-EnvFile([string]$dir) {
-  $envPath = Join-Path $dir '.env'
-  if (Test-Path $envPath) { return }
-
-  $examplePath = Join-Path $dir '.env.example'
-  if (Test-Path $examplePath) {
-    Copy-Item $examplePath $envPath
-    return
+foreach ($port in @(3000, 5173)) {
+  if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
+    throw "$port portu zaten kullanılıyor. Önce mevcut servisi kapatın."
   }
 }
 
-Ensure-EnvFile $backendDir
-Ensure-EnvFile $frontendDir
+& $nodeExe (Join-Path $backendDir 'scripts/setup-local.js')
+if ($LASTEXITCODE -ne 0) { throw 'Yerel ayarlar oluşturulamadı.' }
 
-# Use npm.cmd to avoid Start-Process issues with npm.ps1
-$npmCmd = Join-Path ${env:ProgramFiles} 'nodejs\npm.cmd'
-if (-not (Test-Path $npmCmd)) {
-  throw "npm.cmd bulunamadi: $npmCmd"
-}
-
-Start-Process powershell -ArgumentList @(
-  '-NoExit',
-  '-Command',
-  "Set-Location `"$backendDir`"; & `"$npmCmd`" start"
-)
-
-Start-Process powershell -ArgumentList @(
-  '-NoExit',
-  '-Command',
-  "Set-Location `"$frontendDir`"; & `"$npmCmd`" start"
-)
-
-Write-Host "Frontend: http://localhost:5173" -ForegroundColor Green
-Write-Host "Backend:  http://localhost:3000/api" -ForegroundColor Green
+$backendProcess = Start-Process -FilePath $nodeExe -ArgumentList 'server.js' -WorkingDirectory $backendDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $repoRoot 'backend-start.log') -RedirectStandardError (Join-Path $repoRoot 'backend-start.err.log')
+$frontendProcess = Start-Process -FilePath $nodeExe -ArgumentList 'node_modules/vite/bin/vite.js --host 127.0.0.1 --strictPort' -WorkingDirectory $frontendDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $repoRoot 'frontend-start.log') -RedirectStandardError (Join-Path $repoRoot 'frontend-start.err.log')
+Write-Host "Frontend: http://localhost:5173 (PID $($frontendProcess.Id))"
+Write-Host "Backend: http://localhost:3000/api (PID $($backendProcess.Id))"
+Write-Host 'Yönetici giriş bilgileri: backend/.env'

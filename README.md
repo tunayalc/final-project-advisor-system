@@ -1,103 +1,64 @@
 # Final Project Advisor System
 
-React, Node.js ve SQLite ile geliştirilmiş çok bölümlü danışman atama sistemi. Öğrenciler bölüm seçerek transkript PDF yükler, admin öğrenci kayıtlarını onaylar ve merkezi atama `%80 GANO + %20 tercih sırası` puanıyla yapılır.
+React, Node.js ve SQLite ile danışman atama sistemi. Öğrenciler kendi hesaplarını açar, PDF transkriptlerinden GANO/GABNO okunur ve transkriptteki dört bilgi eşleştiğinde otomatik onaylanarak danışman tercihi yapar.
 
-## Özellikler
+## Yerel kurulum
 
-- Öğrenci self-register akışı: ad soyad, e-posta, şifre, bölüm, giriş yılı ve transkript PDF.
-- PDF transkriptten metin tabanlı `GANO`/`GABNO` okuma.
-- Admin onayı bekleyen öğrenci durumu.
-- Admin panelinde bölüm ekleme, danışman ekleme, öğrenci başvurusu onaylama/reddetme/düzenleme.
-- Çok bölüm modeli: `Yapay Zeka ve Veri Mühendisliği` ve `Bilgisayar Mühendisliği`.
-- Danışman ve öğrenci listelerinde bölüm izolasyonu; bölüm dışı tercih, teklif ve atama yapılmaz.
-- Merkezi atamada açıklanabilir puanlama:
-  - `GANO_puanı = (gano / 4) * 100`
-  - `tercih_puanı`: ilk tercih `100`, son tercih `0`
-  - `toplam_puan = GANO_puanı * 0.80 + tercih_puanı * 0.20`
-- Admin işlem günlüğünde puan katkıları ve tercih sırası detayı.
+Node.js 22.16+ veya 24 kullanın. `backend` ve `frontend` klasörlerinde `npm ci` çalıştırın, ardından proje kökünde:
 
-## Teknoloji
-
-- Frontend: React 19, Vite, React Router, Axios, Lucide React
-- Backend: Node.js, Express 5, JWT, bcryptjs, multer, pdf-parse
-- Veritabanı: SQLite + better-sqlite3
-
-## Kurulum
-
-Backend:
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-npm run dev
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ./start-dev.ps1
 ```
 
-Frontend:
+- Uygulama: http://localhost:5173
+- API: http://localhost:3000/api
+- İlk yerel kurulum, `backend/.env` dosyasına rastgele JWT anahtarı ve yönetici şifresi yazar. Yönetici e-postası `admin@ankara.edu.tr`; şifre bu dosyadaki `ADMIN_PASSWORD` değeridir. Bu dosya Git'e dahil edilmez.
+- Tekrar başlatma mevcut hesapları ve şifreleri değiştirmez. Çalışan servislerin PID'leri başlangıç çıktısında gösterilir.
 
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
+## Gerçek akademik kadro
+
+`backend/db/faculty-roster.js`, 8 Eylül 2026 tarihinde [bölüm sayfasından](https://ai.eng.ankara.edu.tr/kisiler/) doğrulanan 9 öğretim üyesini içerir. Araştırma görevlileri dahil değildir. Bölümden verilen bilgiye göre İbrahim Kök yerine Doç. Dr. Ebubekir Kaya eklenmiştir; Kaya'nın e-postası [enstitü sayfasından](https://fenbilimleri.ankara.edu.tr/yapay-zeka-ve-veri-muhendisligi-2/) doğrulanmıştır. Kaya'nın uzmanlık alanları henüz eklenmemiştir.
+
+Örnek danışmanlar ve öğrenciler oluşturulmaz. Eski veritabanındaki bilinen örnek danışmanlar ile İbrahim Kök pasifleştirilir; geçmiş atamalar silinmez. Kayıt ve yönetici bölüm seçeneklerinde yalnızca Yapay Zeka ve Veri Mühendisliği görünür. Yeni bölüm açma kapalıdır; eski veritabanındaki diğer bölümlerin geçmiş kayıtları silinmez.
+
+Hoca hesapları ortak demo şifresi kullanmaz. İlk erişim için her hocaya ayrı güçlü şifre atayın:
+
+```powershell
+$env:ACCOUNT_PASSWORD = 'hocaya-ozel-en-az-12-karakter'
+node backend/scripts/set-password.js toktasa@ankara.edu.tr
+Remove-Item Env:ACCOUNT_PASSWORD
 ```
 
-Uygulama adresleri:
+Şifreyi ilgili hocaya güvenli şekilde ilettikten sonra hoca kendi panelinden değiştirebilir. Bu araç mevcut yönetici şifresini değiştirmek için de kullanılabilir.
 
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:3000/api`
+## Öğrenci kaydı
 
-## Demo Hesapları
+Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş yılı ve PDF transkript gönderilir. Tek bölüm Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği'dir.
 
-İlk çalıştırmada veritabanı boşsa seed verisi yüklenir.
+Transkriptten dört alan okunur: ad soyad, GANO/GABNO (0–4), üniversite ve bölüm. Ad formdaki adla, üniversite Ankara Üniversitesi ile ve bölüm Yapay Zeka ve Veri Mühendisliği ile eşleşmelidir. Dört kontrol geçerse kullanıcı ve öğrenci kaydı tek işlemle oluşturulur, şifre bcrypt ile hashlenir ve hesap doğrudan `approved` olur. Öğrenci yönetici onayı beklemeden tercih yapabilir. Okunan dört alan ve kontrol zamanı veritabanında tutulur, öğrenci panelinde gösterilir.
 
-| Rol | E-posta | Şifre |
-| --- | --- | --- |
-| Admin | `admin@ankara.edu.tr` | `admin123` |
-| Danışman | `ahmet.yilmaz@ankara.edu.tr` | `hoca123` |
+Eksik, tutarsız veya farklı bilgi içeren belgeler 422 yanıtıyla reddedilir; hesap oluşturulmaz. PDF'nin metni seçilebilir ve şifresiz olması gerekir; taranmış görseller için OCR yoktur. Açıkça etiketlenmiş alanlar kullanılır; tahmini isim eşleştirmesi yapılmaz. YÖK transkriptindeki Genel Not Ortalaması alanına öncelik verilir; bu alan yoksa belgedeki son kümülatif ortalama alınır. YÖK belgelerinin sütunlu ad/soyad düzeni ve Programı/ABD/ASD alanı desteklenir. Orijinal PDF saklanmaz. Eski onay bekleyen kayıtlar yeni kuralla otomatik onaylanmaz.
 
-Başlangıçta öğrenci yoktur. Öğrenciler giriş ekranındaki `Öğrenci Kaydı` sekmesinden transkript PDF yükleyerek kayıt olur.
+Bu işlem PDF metninin tutarlılığını kontrol eder; dijital imza, barkod veya üniversite sistemi üzerinden belge gerçekliği doğrulamaz. E-posta doğrulama ve e-posta ile şifre sıfırlama henüz uygulanmamıştır.
 
-## Öğrenci Akışı
+Ana sayfa rehberi GANO puanını `(GANO / 4) × 100`, toplam puanı `GANO puanı × 0,80 + tercih puanı × 0,20` olarak açıklar. İlk tercih 100, son tercih 0, aradaki tercihler eşit aralıklarla puanlanır; tek tercih 100 puandır. Örnek: 3,20 GANO ve ilk tercih için 84 puan. Kontenjan, eşitlik ve boş kontenjana atama kuralları da rehberde açıklanır.
 
-1. Öğrenci `Öğrenci Kaydı` sekmesinden bölüm seçerek kayıt oluşturur.
-2. Sistem PDF metninde `GANO` veya Ankara Üniversitesi transkriptlerinde kullanılan `GABNO` alanını okur.
-3. Öğrenci hesabı `admin onayı bekliyor` durumunda açılır.
-4. Admin kaydı onaylayana kadar öğrenci hoca listesi göremez ve tercih kaydedemez.
-5. Admin onayından sonra öğrenci yalnız kendi bölümündeki aktif danışmanları sıralı tercih listesine ekler.
+## Canlı ortam
 
-## Admin Akışı
+`backend/.env.example` değişkenlerini sunucunun gizli ortam ayarlarında doldurun. `JWT_SECRET` en az 32 karakterli rastgele bir anahtar, ilk kurulumdaki `ADMIN_PASSWORD` en az 12 karakter olmalıdır. Backend `.env` dosyasını otomatik okur. Eski kurulumdan kalan yönetici şifresi otomatik değişmez; taşıma sırasında güncelleyin.
 
-- Danışman ekler ve danışmanları aktif/pasif yapar.
-- Yeni bölüm açar; yeni öğrenciler ve danışmanlar bu bölüm listesi üzerinden bağlanır.
-- Öğrenci başvurularında ad soyad, e-posta, GANO ve giriş yılını düzenleyebilir.
-- Başvuruyu onaylar veya reddeder.
-- Kontenjanları hesaplar ve merkezi yerleştirmeyi çalıştırır.
-- Atama loglarında puan detaylarını izler.
-
-## Atama Test Case Datasetleri
-
-Hocanın istediği algoritma senaryoları `docs/assignment_cases/` altında CSV olarak kayıtlıdır. Her case aynı dosya yapısını kullanır: `departments.csv`, `faculty.csv`, `students.csv`, `preferences.csv`, `expected_summary.csv`.
-
-Ana setler:
-
-- `01_popular_two_advisors`: iki hocanın çok yoğun talep gördüğü 22 öğrencilik YZVM senaryosu.
-- `02_happy_path_equal`: 40 öğrencinin 4 hocaya eşit dağıldığı happy path.
-- `03_yzvm_40_realistic`: YZVM için 40 kontenjanlı dengesiz tercih senaryosu.
-- `04_computer_engineering_110`: Bilgisayar Mühendisliği için 110 öğrenci / 10 hoca senaryosu.
-- `05_capacity_*`: 100, 500, 1000 ve 5000 öğrenci kapasiteli benchmark setleri.
-
-Ek edge-case setleri pending/rejected öğrenciler, pasif hoca, fallback, tie-break ve çok bölüm izolasyonunu ölçer.
-
-## Veritabanı Notu
-
-SQLite dosyaları repo dışında tutulur. Uygulama ilk açılışta `backend/db/schema.sql` ve `backend/db/seed.sql` üzerinden veritabanını oluşturur.
+SQLite `DB_PATH` değerini kalıcı disk üzerindeki mutlak dosya yoluna ayarlayın ve yedekleme planlayın. Varsayılan yerel yol `backend/db/danisman_atama.db` olup Git tarafından dışlanır. Frontend için `VITE_API_BASE_URL` değerini HTTPS API adresine ayarlayarak `npm run build` çalıştırın. Alan adı, HTTPS, kalıcı disk ve e-posta akışları canlıya alma sırasında yapılandırılmalıdır.
 
 ## Doğrulama
 
-```bash
-node --check backend/routes/auth.js backend/routes/admin.js backend/routes/students.js backend/routes/faculty.js backend/engine/assignment.js backend/db/database.js
-node --check docs/assignment_case_runner.cjs docs/generate_assignment_cases.cjs
+```powershell
+node --test backend/tests/transcript.test.js
 node docs/assignment_case_runner.cjs --all
-cd frontend && npm run lint && npm run build
+cd frontend
+npm run lint
+npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+E2E testleri ayrı geçici SQLite dosyası kullanır; yerel öğrenci kayıtlarını değiştirmez. Test öncesinde 3000 ve 5173 portları boş olmalıdır. Atama senaryoları `docs/assignment_cases/` altında tutulur; test verileri uygulamaya yüklenmez.

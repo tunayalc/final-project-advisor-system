@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileText, Lock, ShieldCheck, UserPlus, UserRound } from 'lucide-react';
+import { ArrowRight, FileText, Lock, UserPlus, UserRound } from 'lucide-react';
 import api from '../api';
+import AssignmentGuide from '../components/AssignmentGuide';
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState('login');
@@ -115,28 +116,8 @@ export default function Login({ onLogin }) {
     <div className="login-grid animate-fade-in">
       <section className="login-brand">
         <p className="eyebrow">Ankara Üniversitesi</p>
-        <h1>Danışmanlık atama süreci için kurumsal yönetim paneli.</h1>
-        <p className="muted-copy">
-          Öğrenci başvuruları, danışman tercihleri, kontenjan kararları ve merkezi yerleştirme
-          adımları Ankara Üniversitesi akademik işleyişine uygun tek akışta izlenir.
-        </p>
+        <h1>Bitirme projeniz için danışmanınızı tercih edin.</h1>
 
-        <div className="feature-stack">
-          <article className="feature-card">
-            <ShieldCheck size={18} />
-            <div>
-              <strong>Yetkilendirme</strong>
-              <p className="muted-copy">Oturumlar rol bazlı doğrulama ile korunur.</p>
-            </div>
-          </article>
-          <article className="feature-card">
-            <ArrowRight size={18} />
-            <div>
-              <strong>Merkezi Akış</strong>
-              <p className="muted-copy">Atama puanı GANO ve tercih sırasını birlikte kullanır.</p>
-            </div>
-          </article>
-        </div>
       </section>
 
       <section className="panel login-panel">
@@ -169,7 +150,7 @@ export default function Login({ onLogin }) {
         <p className="muted-copy">
           {mode === 'login'
             ? 'Kurumsal e-posta adresiniz ve şifreniz ile oturum açın.'
-            : 'Transkript PDF dosyanızdan GANO okunur; hesabınız admin onayından sonra tercih yapabilir.'}
+            : 'Transkriptinizdeki ad soyad, GANO, üniversite ve bölüm okunur. Adınız form ile, üniversite ve bölüm bilgileriniz Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği ile eşleşirse hesabınız anında onaylanır.'}
         </p>
 
         {mode === 'login' ? (
@@ -212,12 +193,6 @@ export default function Login({ onLogin }) {
                 {loading ? 'Oturum açılıyor' : 'Devam et'}
               </button>
             </form>
-
-            <div className="demo-box">
-              <p><strong>Demo hesapları</strong></p>
-              <p>Admin: admin@ankara.edu.tr / admin123</p>
-              <p>Danışman: ahmet.yilmaz@ankara.edu.tr / hoca123</p>
-            </div>
           </>
         ) : (
           <>
@@ -259,7 +234,6 @@ export default function Login({ onLogin }) {
                     onChange={(event) => updateRegisterForm('department_id', event.target.value)}
                     required
                   >
-                    <option value="">Bölüm seçin</option>
                     {departments.map((department) => (
                       <option key={department.id} value={department.id}>
                         {department.name}
@@ -304,11 +278,13 @@ export default function Login({ onLogin }) {
                     type="file"
                     className="app-input"
                     accept="application/pdf"
+                    aria-describedby="transcript-help"
                     onChange={(event) => updateRegisterForm('transcript', event.target.files?.[0] || null)}
                     required
                   />
                 </div>
               </label>
+              <small id="transcript-help">Metni seçilebilen, şifresiz bir PDF yükleyin (en fazla 5 MB). Dört bilgiden biri okunamazsa veya eşleşmezse kayıt oluşturulmaz.</small>
 
               <button type="submit" className="btn btn-primary btn-wide" disabled={registerLoading}>
                 <UserPlus size={16} />
@@ -318,6 +294,7 @@ export default function Login({ onLogin }) {
           </>
         )}
       </section>
+      <AssignmentGuide />
     </div>
   );
 }

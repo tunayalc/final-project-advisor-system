@@ -1,3 +1,4 @@
+const { DEPARTMENT } = require('../services/transcript');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { getDb } = require('../db/database');
@@ -81,7 +82,7 @@ router.post('/force-assign', authenticate, authorize('admin'), (req, res) => {
             }
 
             if (student.approval_status !== 'approved') {
-                throw new Error('Yalnızca admin onaylı öğrenciler atanabilir.');
+                throw new Error('Yalnızca onaylı öğrenciler atanabilir.');
             }
 
             if (student.department_id !== targetFaculty.department_id) {
@@ -106,7 +107,7 @@ router.post('/force-assign', authenticate, authorize('admin'), (req, res) => {
         console.error(err);
         if (
             err.message === 'Öğrenci bulunamadı.' ||
-            err.message === 'Yalnızca admin onaylı öğrenciler atanabilir.' ||
+            err.message === 'Yalnızca onaylı öğrenciler atanabilir.' ||
             err.message === 'Öğrenci yalnızca kendi bölümündeki danışmana atanabilir.'
         ) {
             return res.status(400).json({ error: err.message });
@@ -220,7 +221,7 @@ router.get('/users', authenticate, authorize('admin'), (req, res) => {
 router.get('/departments', authenticate, authorize('admin'), (req, res) => {
     try {
         const db = getDb();
-        const departments = db.prepare('SELECT id, name FROM departments ORDER BY name ASC').all();
+        const departments = db.prepare('SELECT id, name FROM departments WHERE name = ?').all(DEPARTMENT);
         res.json(departments);
     } catch (err) {
         console.error(err);
@@ -229,36 +230,7 @@ router.get('/departments', authenticate, authorize('admin'), (req, res) => {
 });
 
 router.post('/departments', authenticate, authorize('admin'), (req, res) => {
-    try {
-        const db = getDb();
-        const normalizedName = String(req.body.name || '').trim().replace(/\s+/g, ' ');
-
-        if (!normalizedName) {
-            return res.status(400).json({ error: 'Bölüm adı zorunludur.' });
-        }
-
-        if (normalizedName.length < 3) {
-            return res.status(400).json({ error: 'Bölüm adı en az 3 karakter olmalıdır.' });
-        }
-
-        const existing = db.prepare('SELECT id FROM departments WHERE LOWER(name) = LOWER(?)').get(normalizedName);
-        if (existing) {
-            return res.status(409).json({ error: 'Bu bölüm zaten kayıtlı.' });
-        }
-
-        const result = db.prepare('INSERT INTO departments (name) VALUES (?)').run(normalizedName);
-        const department = db.prepare('SELECT id, name FROM departments WHERE id = ?').get(result.lastInsertRowid);
-        db.prepare('INSERT INTO assignment_logs (action, details) VALUES (?, ?)')
-            .run('ADMIN_CREATE_DEPARTMENT', `${normalizedName} bölümü yönetici tarafından oluşturuldu.`);
-
-        res.status(201).json({
-            message: `${normalizedName} bölümü eklendi.`,
-            department,
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Sunucu hatası.' });
-    }
+    res.status(403).json({ error: 'Şu anda yalnızca Yapay Zeka ve Veri Mühendisliği bölümü kullanılabilir.' });
 });
 
 router.post('/users', authenticate, authorize('admin'), (req, res) => {
@@ -284,7 +256,7 @@ router.post('/users', authenticate, authorize('admin'), (req, res) => {
             return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
         }
 
-        const department = db.prepare('SELECT id FROM departments WHERE id = ?').get(departmentId);
+        const department = db.prepare('SELECT id FROM departments WHERE id = ? AND name = ?').get(departmentId, DEPARTMENT);
         if (!department) {
             return res.status(404).json({ error: 'Bölüm bulunamadı.' });
         }

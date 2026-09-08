@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Calculator, Check, Download, Play, RefreshCcw, ShieldCheck, Trash2, UserCog, UserPlus, Users, X } from 'lucide-react';
+import { Calculator, Check, Download, Play, RefreshCcw, ShieldCheck, Trash2, UserCog, UserPlus, Users, X } from 'lucide-react';
 import api from '../api';
 import PasswordPanel from '../components/PasswordPanel';
 
@@ -33,12 +33,10 @@ export default function AdminDashboard() {
   const [pendingApplications, setPendingApplications] = useState([]);
   const [applicationEdits, setApplicationEdits] = useState({});
   const [userForm, setUserForm] = useState(emptyUserForm);
-  const [departmentName, setDepartmentName] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedFacultyId, setSelectedFacultyId] = useState('');
   const [loading, setLoading] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
-  const [creatingDepartment, setCreatingDepartment] = useState(false);
   const [notice, setNotice] = useState({ type: '', text: '' });
 
   const loadData = async () => {
@@ -236,31 +234,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCreateDepartment = async (event) => {
-    event.preventDefault();
-    setCreatingDepartment(true);
-    setNotice({ type: '', text: '' });
-
-    try {
-      const response = await api.post('/admin/departments', {
-        name: departmentName.trim(),
-      });
-      setNotice({ type: 'success', text: response.data.message });
-      setDepartmentName('');
-      if (response.data.department?.id) {
-        setUserForm((current) => ({
-          ...current,
-          department_id: String(response.data.department.id),
-        }));
-      }
-      await loadData();
-    } catch (error) {
-      setNotice({ type: 'error', text: error.response?.data?.error || 'Bölüm eklenemedi.' });
-    } finally {
-      setCreatingDepartment(false);
-    }
-  };
-
   const handleReviewApplication = async (applicationId, approvalStatus) => {
     const edit = applicationEdits[applicationId];
     if (!edit) {
@@ -352,48 +325,7 @@ export default function AdminDashboard() {
         </section>
       )}
 
-      <section className="panel">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Bölüm Yönetimi</p>
-            <h2>Bölüm ekle</h2>
-          </div>
-          <span className="icon-chip">
-            <Building2 size={18} />
-          </span>
-        </div>
 
-        <form className="stack-form" onSubmit={handleCreateDepartment}>
-          <label className="field-block">
-            <span>Bölüm adı</span>
-            <input
-              type="text"
-              className="app-input"
-              placeholder="Örn. Elektrik-Elektronik Mühendisliği"
-              value={departmentName}
-              onChange={(event) => setDepartmentName(event.target.value)}
-              minLength={3}
-              required
-            />
-          </label>
-
-          <div className="action-row">
-            <button type="submit" className="btn btn-primary" disabled={creatingDepartment}>
-              <Building2 size={16} />
-              {creatingDepartment ? 'Ekleniyor' : 'Bölüm ekle'}
-            </button>
-          </div>
-        </form>
-
-        <div className="detail-stack">
-          {departments.map((department) => (
-            <div key={department.id} className="detail-row">
-              <span>Bölüm</span>
-              <strong>{department.name}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
 
       <section className="panel">
         <div className="section-header">

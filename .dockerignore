@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/*.db*
+**/*.sqlite*
+**/*.log
+**/test-results
+**/playwright-report
+frontend_cra
+docs

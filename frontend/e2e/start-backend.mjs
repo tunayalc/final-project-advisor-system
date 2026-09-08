@@ -16,7 +16,9 @@ const child = spawn(process.execPath, ['server.js'], {
     ...process.env,
     PORT: '3000',
     DB_PATH: dbPath,
-    JWT_SECRET: 'playwright-e2e-secret',
+    JWT_SECRET: 'playwright-e2e-secret-isolated-test-only',
+    ADMIN_PASSWORD: 'AdminTest1234!',
+    ADMIN_EMAIL: 'admin@ankara.edu.tr',
   },
   stdio: 'inherit',
 });
