@@ -1,5 +1,11 @@
 # Ücretsiz yayın
 
+Canlı ön yüz: https://tunayalc.github.io/final-project-advisor-system/
+
+Sunucu: https://final-project-advisor-system.onrender.com — sağlık: `/api/health`.
+
+Ön yüz değişiklikleri `main` dalına gönderildiğinde GitHub Pages iş akışı otomatik çalışır. Render açık depo bağlantısıyla kurulduğundan backend değişikliklerini yayınlamak için Render panelinden **Manual Deploy → Deploy latest commit** seçilir.
+
 Uygulama Render Free üzerinde, kalıcı veriler Supabase Free PostgreSQL üzerinde çalışır. GitHub Pages kullanılacaksa ön yüz `VITE_HASH_ROUTER=true` ve `VITE_API_BASE_URL=https://SUNUCU.onrender.com/api` ile derlenir.
 
 Render yapılandırması: public Git repository, `main` dalı, Docker, Frankfurt, Free ($0). Disk eklenmez. Sağlık kontrolü `/api/health` olmalıdır.
