@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { getDb, initializeDb } = require('./db/database');
+const { restoreBackupFiles } = require('./services/selection-backups');
 
 const authRoutes = require('./routes/auth');
 const studentRoutes = require('./routes/students');
@@ -40,7 +41,8 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Beklenmeyen bir hata oluştu.' });
 });
 
-initializeDb().then(() => {
+initializeDb().then(async () => {
+    await restoreBackupFiles(getDb());
     app.listen(PORT, () => console.log(`Backend sunucusu ${PORT} portunda çalışıyor.`));
 }).catch(() => {
     console.error('Veritabanı başlatılamadı. Bağlantı ve kurulum ayarlarını kontrol edin.');

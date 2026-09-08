@@ -6,6 +6,7 @@
 **/*.db*
 **/*.sqlite*
 **/*.log
+**/selection-backups
 **/test-results
 **/playwright-report
 frontend_cra

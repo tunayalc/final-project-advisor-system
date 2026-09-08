@@ -1,5 +1,17 @@
 -- Danışman Atama Sistemi — Database Schema
 
+-- No cascading foreign keys: historical receipts survive account/choice changes.
+CREATE TABLE IF NOT EXISTS selection_backups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL UNIQUE,
+    student_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    saved_at TEXT NOT NULL,
+    content TEXT NOT NULL,
+    sha256 TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS selection_backups_student ON selection_backups(student_id, id);
+
 CREATE TABLE IF NOT EXISTS departments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE

@@ -1,6 +1,7 @@
 const express = require('express');
 const { getDb } = require('../db/database');
 const { authenticate, authorize } = require('../middleware/auth');
+const { archiveSelection, mirrorSelection } = require('../services/selection-backups');
 
 const router = express.Router();
 
@@ -106,7 +107,7 @@ router.get('/preferences', authenticate, authorize('ogrenci'), async (req, res) 
 router.post('/preferences', authenticate, authorize('ogrenci'), async (req, res) => {
   try {
     const { preferences } = req.body; // Array of faculty_ids in order
-    if (!Array.isArray(preferences) || preferences.length === 0) {
+    if (!Array.isArray(preferences) || preferences.length === 0 || new Set(preferences).size !== preferences.length) {
       return res.status(400).json({ error: 'Geçersiz tercih listesi.' });
     }
 
@@ -141,18 +142,23 @@ router.post('/preferences', authenticate, authorize('ogrenci'), async (req, res)
       // Delete old prefs
       await db.prepare('DELETE FROM preferences WHERE student_id = ?').run(studentId);
 
-      const insertStmt = db.prepare('INSERT INTO preferences (student_id, faculty_id, rank) VALUES (?, ?, ?)');for (const [
-      index, faculty_id] of prefs.entries()) {
+      const insertStmt = db.prepare('INSERT INTO preferences (student_id, faculty_id, rank) VALUES (?, ?, ?)');
+      for (const [index, faculty_id] of prefs.entries()) {
         await insertStmt.run(studentId, faculty_id, index + 1);
       }
 
       // Log action
       await db.prepare('INSERT INTO assignment_logs (student_id, action, details) VALUES (?, ?, ?)').
       run(studentId, 'UPDATE_PREFERENCES', `Tercihler güncellendi: ${prefs.join(',')}`);
+      const choices = await db.prepare(`SELECT p.rank, p.faculty_id, u.full_name AS faculty_name
+        FROM preferences p JOIN faculty f ON f.id = p.faculty_id
+        JOIN users u ON u.id = f.user_id WHERE p.student_id = ? ORDER BY p.rank`).all(studentId);
+      return archiveSelection(db, studentId, 'PREFERENCES_SAVED', { preferences: choices });
     });
 
-    await savePrefs(student.id, preferences);
-    res.json({ message: 'Tercih listesi başarıyla kaydedildi.' });
+    const backup = await savePrefs(student.id, preferences);
+    mirrorSelection(backup);
+    res.json({ message: 'Tercih listesi kaydedildi ve geçmiş kaydı oluşturuldu.', receipt: { event_id: backup.event_id, saved_at: backup.saved_at } });
 
   } catch (err) {
     console.error(err);
@@ -247,9 +253,14 @@ router.post('/invitations/:id/respond', authenticate, authorize('ogrenci'), asyn
 
       await db.prepare('INSERT INTO assignment_logs (student_id, faculty_id, action, details) VALUES (?, ?, ?, ?)').
       run(student.id, invite.faculty_id, `INVITE_${status.toUpperCase()}`, `Davet ID: ${inviteId}`);
+      const advisor = await db.prepare('SELECT u.full_name FROM faculty f JOIN users u ON u.id = f.user_id WHERE f.id = ?').get(invite.faculty_id);
+      return archiveSelection(db, student.id, 'INVITATION_RESPONDED', {
+        invitation_id: Number(inviteId), status, faculty_id: invite.faculty_id, faculty_name: advisor.full_name,
+      });
     });
 
-    await transaction();
+    const backup = await transaction();
+    mirrorSelection(backup);
     res.json({ message: status === 'accepted' ? 'Davet kabul edildi.' : 'Davet reddedildi.' });
 
   } catch (err) {

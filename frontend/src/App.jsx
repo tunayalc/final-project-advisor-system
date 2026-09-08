@@ -118,6 +118,11 @@ function App() {
           />
         </Routes>
       </main>
+      <footer className="feedback-footer">
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLScfhKxeBDtfwtQP7TBWzxU7VyIo2ODKHYqHmJ7tqo71Akbt4w/viewform" target="_blank" rel="noopener noreferrer">
+          Sorun bildir / Geri bildirim gönder
+        </a>
+      </footer>
     </div>
   );
 }

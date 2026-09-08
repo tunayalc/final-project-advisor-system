@@ -432,3 +432,13 @@ button, input, select { font: inherit; }
   .guide-steps li + li { margin-top: 0; }
   .guide-scores { grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
 }
+/* Feedback remains available before sign-in, including registration problems. */
+.feedback-footer {
+  padding: 1.25rem;
+  text-align: center;
+}
+.feedback-footer a {
+  color: #334e72;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

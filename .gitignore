@@ -17,3 +17,4 @@ backend/db/*.e2e.db-shm
 backend/db/*.e2e.db-wal
 frontend/playwright-report/
 frontend/test-results/
+selection-backups/

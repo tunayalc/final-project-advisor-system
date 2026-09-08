@@ -164,6 +164,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleBackupExport = async () => {
+    try {
+      const response = await api.get('/admin/selection-backups/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tercih-gecmisi-${new Date().toISOString().slice(0, 10)}.jsonl`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setNotice({ type: 'error', text: 'Tercih geçmişi indirilemedi. Lütfen yeniden deneyin.' });
+    }
+  };
+
   const handleFacultyStatus = async (facultyId, nextStatus) => {
     try {
       const response = await api.patch(`/admin/faculty/${facultyId}/status`, { is_active: nextStatus });
@@ -287,6 +303,10 @@ export default function AdminDashboard() {
         </div>
 
         <div className="action-row">
+          <button type="button" className="btn btn-outline" onClick={handleBackupExport}>
+            <Download size={16} />
+            Tercih geçmişini indir
+          </button>
           <button type="button" className="btn btn-outline" onClick={handleExport}>
             <Download size={16} />
             Sonuçları indir

@@ -7,6 +7,37 @@ const engine = require('../engine/assignment');
 
 const router = express.Router();
 
+// Historical receipts are private and are not deleted when current preferences change.
+router.get('/selection-backups/export', authenticate, authorize('admin'), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const maximum = (await db.prepare('SELECT MAX(id) AS id FROM selection_backups').get()).id || 0;
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="tercih-gecmisi.jsonl"');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    let cursor = 0;
+    while (cursor < maximum && !res.destroyed) {
+      const rows = await db.prepare('SELECT id, content, sha256 FROM selection_backups WHERE id > ? AND id <= ? ORDER BY id LIMIT 500').all(cursor, maximum);
+      if (!rows.length) break;
+      for (const row of rows) {
+        if (res.destroyed) return;
+        const line = JSON.stringify({ sha256: row.sha256, record: JSON.parse(row.content) }) + '\n';
+        if (!res.write(line)) await new Promise(resolve => {
+          const done = () => { res.off('drain', done); res.off('close', done); resolve(); };
+          res.once('drain', done);
+          res.once('close', done);
+        });
+        cursor = row.id;
+      }
+    }
+    res.end();
+  } catch (error) {
+    if (res.headersSent) res.destroy();
+    else next(error);
+  }
+});
+
 router.post('/calculate-quotas', authenticate, authorize('admin'), async (req, res) => {
   try {
     const result = await engine.calculateQuotas();

@@ -1,5 +1,15 @@
 CREATE SCHEMA IF NOT EXISTS advisor;
 SET search_path TO advisor;
+CREATE TABLE IF NOT EXISTS selection_backups (
+    id SERIAL PRIMARY KEY,
+    event_id TEXT NOT NULL UNIQUE,
+    student_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    saved_at TEXT NOT NULL,
+    content TEXT NOT NULL,
+    sha256 TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS selection_backups_student ON selection_backups(student_id, id);
 -- Danışman Atama Sistemi — Database Schema
 
 CREATE TABLE IF NOT EXISTS departments (

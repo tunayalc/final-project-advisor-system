@@ -1,6 +1,36 @@
 import { expect, test } from '@playwright/test';
 import { Buffer } from 'node:buffer';
 
+for (const status of ['accepted', 'rejected']) {
+  test(`invitation ${status} is archived once and duplicate responses are rejected`, async ({ request }) => {
+    const unique = `${Date.now()}.${status}`;
+    const admin = await getAdminToken(request);
+    const email = `faculty.${unique}@example.invalid`;
+    const created = await request.post(`${apiBaseUrl}/admin/users`, {
+      headers: { Authorization: `Bearer ${admin}` },
+      data: { email, full_name: 'Archive Test Faculty', password: 'ArchiveFaculty123!', department_id: 1 },
+    });
+    expect(created.status()).toBe(201);
+    const faculty = await loginApi(request, email, 'ArchiveFaculty123!');
+    const registration = await registerStudent(request, { email: `invite.${unique}@example.invalid`, fullName: 'Invitation Test Student' });
+    const student = registration.token;
+    const profile = await (await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${student}` } })).json();
+    expect((await request.post(`${apiBaseUrl}/faculty/invite`, { headers: { Authorization: `Bearer ${faculty}` }, data: { student_id: profile.id } })).status()).toBe(200);
+    const invites = await (await request.get(`${apiBaseUrl}/students/invitations`, { headers: { Authorization: `Bearer ${student}` } })).json();
+    const respond = () => request.post(`${apiBaseUrl}/students/invitations/${invites[0].id}/respond`, { headers: { Authorization: `Bearer ${student}` }, data: { status } });
+    expect((await respond()).status()).toBe(200);
+    expect((await respond()).status()).toBe(400);
+    const history = await request.get(`${apiBaseUrl}/admin/selection-backups/export`, { headers: { Authorization: `Bearer ${admin}` } });
+    const records = (await history.text()).trim().split('\n').map(line => JSON.parse(line)).filter(row => row.record.student.user_id === registration.user.id);
+    expect(records).toHaveLength(1);
+    expect(records[0].record.selection.status).toBe(status);
+    expect(records[0].record.action).toBe('INVITATION_RESPONDED');
+    // Isolated test database: remove fixture faculty after cleaning its student.
+    await request.delete(`${apiBaseUrl}/admin/users/${registration.user.id}`, { headers: { Authorization: `Bearer ${admin}` } });
+    await request.delete(`${apiBaseUrl}/admin/users/${(await created.json()).user.id}`, { headers: { Authorization: `Bearer ${admin}` } });
+  });
+}
+
 const apiBaseUrl = 'http://127.0.0.1:3000/api';
 const studentPassword = 'Temp1234!';
 
@@ -232,6 +262,34 @@ test('approved student can persist preferences without admin approval', async ({
   await expect(page.getByRole('heading', { name: 'Kayıtlı tercih listeniz' })).toBeVisible();
   await expect(page.locator('.preference-card')).toHaveCount(1);
   await expect(page.getByText(firstFacultyName)).toBeVisible();
+});
+
+test('each saved preference revision is archived and only admins can export history', async ({ request }) => {
+  const registration = await registerStudent(request, { email: `archive.${Date.now()}@example.invalid`, fullName: 'Archive Test Student' });
+  const token = registration.token;
+  const choices = await saveFirstPreferences(request, token, 3);
+  const reversed = [...choices].reverse();
+  const saved = await request.post(`${apiBaseUrl}/students/preferences`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { preferences: reversed },
+  });
+  expect(saved.status()).toBe(200);
+  expect((await saved.json()).receipt.event_id).toBeTruthy();
+  const invalid = await request.post(`${apiBaseUrl}/students/preferences`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { preferences: [choices[0], choices[0]] },
+  });
+  expect(invalid.status()).toBe(400);
+  const url = `${apiBaseUrl}/admin/selection-backups/export`;
+  expect((await request.get(url)).status()).toBe(401);
+  expect((await request.get(url, { headers: { Authorization: `Bearer ${token}` } })).status()).toBe(403);
+  const admin = await getAdminToken(request);
+  const download = await request.get(url, { headers: { Authorization: `Bearer ${admin}` } });
+  expect(download.status()).toBe(200);
+  expect(download.headers()['content-disposition']).toContain('attachment');
+  const records = (await download.text()).trim().split('\n').map(line => JSON.parse(line)).filter(row => row.record.student.user_id === registration.user.id);
+  expect(records).toHaveLength(2);
+  expect(records[0].record.selection.preferences.map(p => p.faculty_id)).toEqual(choices);
+  expect(records[1].record.selection.preferences.map(p => p.faculty_id)).toEqual(reversed);
+  expect(records[0].sha256).toHaveLength(64);
 });
 
 test('scored assignment locks an assigned student and writes score details', async ({ page, request }) => {
