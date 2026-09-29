@@ -37,6 +37,8 @@ export default function AdminDashboard() {
   const [selectedFacultyId, setSelectedFacultyId] = useState('');
   const [loading, setLoading] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  const [resetting, setResetting] = useState(false);
   const [notice, setNotice] = useState({ type: '', text: '' });
 
   const loadData = async () => {
@@ -178,6 +180,36 @@ export default function AdminDashboard() {
     } catch {
       setNotice({ type: 'error', text: 'Tercih geçmişi indirilemedi. Lütfen yeniden deneyin.' });
     }
+  };
+
+  const handleTranscriptDownload = async (studentId) => {
+    try {
+      const response = await api.get(`/admin/students/${studentId}/transcript`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `transkript-${studentId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setNotice({ type: 'error', text: 'Transkript indirilemedi. Lütfen yeniden deneyin.' });
+    }
+  };
+
+  const handleReset = async (event) => {
+    event.preventDefault();
+    if (resetting || resetConfirmation !== 'SIFIRLA') return;
+    setResetting(true);
+    try {
+      await api.post('/admin/reset-system', { confirmation: resetConfirmation });
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.reload();
+    } catch (error) {
+      setNotice({ type: 'error', text: error.response?.data?.error || 'Sıfırlama tamamlanamadı.' });
+    } finally { setResetting(false); }
   };
 
   const handleFacultyStatus = async (facultyId, nextStatus) => {
@@ -706,6 +738,7 @@ export default function AdminDashboard() {
                   <th>Ad Soyad</th>
                   <th>Rol</th>
                   <th>Detay</th>
+                  <th>Transkript</th>
                   <th>İşlem</th>
                 </tr>
               </thead>
@@ -725,6 +758,14 @@ export default function AdminDashboard() {
                           : 'Yönetici hesabı'}
                     </td>
                     <td>
+                      {item.role === 'ogrenci' && (item.has_transcript ? (
+                        <button type="button" className="btn btn-outline btn-small"
+                          onClick={() => handleTranscriptDownload(item.student_id)}>
+                          <Download size={15} /> Transkript indir
+                        </button>
+                      ) : <span>PDF kaydedilmemiş</span>)}
+                    </td>
+                    <td>
                       <button
                         type="button"
                         className="btn btn-ghost btn-danger btn-small"
@@ -740,6 +781,31 @@ export default function AdminDashboard() {
           </div>
         </section>
       </div>
+
+      <section className="panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Sistem Bakımı</p>
+            <h2>Başlangıç ayarlarına sıfırla</h2>
+          </div>
+        </div>
+        <p className="muted-copy">
+          Hoca hesapları ve şifreleri korunur. Öğrenciler, PDF transkriptler, tercihler,
+          teklifler, atamalar ve tüm geçmiş kayıtlar kalıcı olarak silinir; kontenjanlar sıfırlanır.
+          Yönetici hesapları silinip sunucunun kurulum ayarlarıyla tek yönetici oluşturulur.
+          İşlem sonunda çıkış yapılır; yeniden giriş için kurulumdaki yönetici şifresi gerekir.
+        </p>
+        <form className="stack-form" onSubmit={handleReset}>
+          <label className="field-block">
+            <span>Kalıcı silmeyi onaylamak için SIFIRLA yazın</span>
+            <input className="app-input" value={resetConfirmation} autoComplete="off"
+              onChange={(event) => setResetConfirmation(event.target.value)} disabled={resetting} />
+          </label>
+          <button type="submit" className="btn btn-outline btn-danger" disabled={resetting || resetConfirmation !== 'SIFIRLA'}>
+            <Trash2 size={16} /> {resetting ? 'Sıfırlanıyor' : 'Sistemi kalıcı olarak sıfırla'}
+          </button>
+        </form>
+      </section>
 
       <div className="duo-grid align-start">
         <section className="panel">

@@ -81,3 +81,13 @@ CREATE TABLE IF NOT EXISTS assignment_logs (
     details TEXT,
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS student_transcripts (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL UNIQUE REFERENCES students(id) ON DELETE CASCADE,
+    original_name TEXT NOT NULL,
+    content BYTEA NOT NULL,
+    byte_size INTEGER NOT NULL CHECK(byte_size > 0 AND byte_size <= 5242880),
+    sha256 TEXT NOT NULL,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

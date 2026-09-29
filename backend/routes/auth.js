@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
+const crypto = require('node:crypto');
 const { DEPARTMENT, TranscriptError, extractTranscriptInfo } = require('../services/transcript');
 const { getDb } = require('../db/database');
 const { authenticate, JWT_SECRET } = require('../middleware/auth');
@@ -100,7 +101,7 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
       const result = await insertUser.run(normalizedEmail, password_hash, 'ogrenci', transcriptInfo.transcriptFullName);
       userId = result.lastInsertRowid;
 
-      await db.prepare(
+      const student = await db.prepare(
         `INSERT INTO students (
                     user_id,
                     gano,
@@ -122,6 +123,11 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
         transcriptInfo.transcriptUniversity,
         transcriptInfo.transcriptDepartment
       );
+
+      await db.prepare(`INSERT INTO student_transcripts
+        (student_id, original_name, content, byte_size, sha256) VALUES (?, ?, ?, ?, ?)`)
+        .run(student.lastInsertRowid, req.file.originalname.replace(/[\\/\x00-\x1f\x7f]/g, '_').slice(0, 255),
+          req.file.buffer, req.file.buffer.length, crypto.createHash('sha256').update(req.file.buffer).digest('hex'));
 
       await db.prepare('INSERT INTO assignment_logs (student_id, action, details) VALUES ((SELECT id FROM students WHERE user_id = ?), ?, ?)').
       run(userId, 'STUDENT_REGISTER', `Transkript alanları eşleşti, hesap otomatik onaylandı. GANO: ${transcriptInfo.gano}`);

@@ -68,6 +68,48 @@ test('selection history is atomic, keeps identity snapshots, and recreates lost 
     assert.equal(fs.readFileSync(filename, 'utf8'), original);
 });
 
+test('transcript binaries are transactional and cascade when their student is deleted', async () => {
+    const user = await db.prepare('INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)')
+        .run('pdf-test@example.invalid', 'unused', 'ogrenci', 'PDF Student');
+    const student = await db.prepare('INSERT INTO students (user_id, gano, department_id, entry_year) VALUES (?, ?, ?, ?)')
+        .run(user.lastInsertRowid, 3.2, 1, 2024);
+    const content = Buffer.from('%PDF-1.4\noriginal bytes');
+    const save = () => db.prepare('INSERT INTO student_transcripts (student_id, original_name, content, byte_size, sha256) VALUES (?, ?, ?, ?, ?)')
+        .run(student.lastInsertRowid, 'original.pdf', content, content.length, crypto.createHash('sha256').update(content).digest('hex'));
+    await assert.rejects(db.transaction(async () => { await save(); throw new Error('rollback PDF'); })(), /rollback PDF/);
+    assert.equal(await db.prepare('SELECT id FROM student_transcripts WHERE student_id = ?').get(student.lastInsertRowid), undefined);
+    await save();
+    assert.deepEqual((await db.prepare('SELECT content FROM student_transcripts WHERE student_id = ?').get(student.lastInsertRowid)).content, content);
+    await db.prepare('DELETE FROM students WHERE id = ?').run(student.lastInsertRowid);
+    assert.equal(await db.prepare('SELECT id FROM student_transcripts WHERE student_id = ?').get(student.lastInsertRowid), undefined);
+});
+
+test('explicit reset removes all non-faculty data and mirrors while preserving faculty passwords', async () => {
+    const { resetSystem } = require('../services/reset-system');
+    const facultyBefore = await db.prepare("SELECT id, email, password_hash, full_name FROM users WHERE role = 'hoca' ORDER BY id").all();
+    const oldAdmin = await db.prepare("SELECT id FROM users WHERE role = 'admin'").get();
+    const password = process.env.ADMIN_PASSWORD;
+    process.env.ADMIN_PASSWORD = '';
+    await assert.rejects(resetSystem(db), /ADMIN_PASSWORD/);
+    assert(await db.prepare('SELECT id FROM users WHERE id = ?').get(oldAdmin.id));
+    process.env.ADMIN_PASSWORD = password;
+    await db.prepare('UPDATE faculty SET base_quota = 7, current_quota = 3').run();
+    const summary = await resetSystem(db);
+    assert.equal(summary.preservedFaculty, facultyBefore.length);
+    assert.deepEqual(await db.prepare("SELECT id, email, password_hash, full_name FROM users WHERE role = 'hoca' ORDER BY id").all(), facultyBefore);
+    for (const table of ['students', 'student_transcripts', 'preferences', 'pre_assignments', 'selection_backups', 'assignment_logs']) {
+        assert.equal((await db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get()).c, 0, table);
+    }
+    assert.equal((await db.prepare('SELECT COUNT(*) AS c FROM faculty WHERE base_quota <> 0 OR current_quota <> 0').get()).c, 0);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS c FROM users WHERE role <> 'hoca'").get()).c, 1);
+    const admin = await db.prepare("SELECT id, password_hash FROM users WHERE role = 'admin'").get();
+    assert.notEqual(admin.id, oldAdmin.id);
+    assert(require('bcryptjs').compareSync(password, admin.password_hash));
+    assert.deepEqual(fs.readdirSync(backupDirectory()), []);
+    await restoreBackupFiles(db);
+    assert.deepEqual(fs.readdirSync(backupDirectory()), []);
+});
+
 after(async () => {
     await db.close();
     assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));

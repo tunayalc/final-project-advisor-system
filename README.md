@@ -37,7 +37,7 @@ Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş y
 
 Transkriptten dört alan okunur: ad soyad, GANO/GABNO (0–4), üniversite ve bölüm. Ad formdaki adla, üniversite Ankara Üniversitesi ile ve bölüm Yapay Zeka ve Veri Mühendisliği ile eşleşmelidir. Dört kontrol geçerse kullanıcı ve öğrenci kaydı tek işlemle oluşturulur, şifre bcrypt ile hashlenir ve hesap doğrudan `approved` olur. Öğrenci yönetici onayı beklemeden tercih yapabilir. Okunan dört alan ve kontrol zamanı veritabanında tutulur, öğrenci panelinde gösterilir.
 
-Eksik, tutarsız veya farklı bilgi içeren belgeler 422 yanıtıyla reddedilir; hesap oluşturulmaz. PDF'nin metni seçilebilir ve şifresiz olması gerekir; taranmış görseller için OCR yoktur. Açıkça etiketlenmiş alanlar kullanılır; tahmini isim eşleştirmesi yapılmaz. YÖK transkriptindeki Genel Not Ortalaması alanına öncelik verilir; bu alan yoksa belgedeki son kümülatif ortalama alınır. YÖK belgelerinin sütunlu ad/soyad düzeni ve Programı/ABD/ASD alanı desteklenir. Orijinal PDF saklanmaz. Eski onay bekleyen kayıtlar yeni kuralla otomatik onaylanmaz.
+Eksik, tutarsız veya farklı bilgi içeren belgeler 422 yanıtıyla reddedilir; hesap oluşturulmaz. PDF'nin metni seçilebilir ve şifresiz olması gerekir; taranmış görseller için OCR yoktur. Açıkça etiketlenmiş alanlar kullanılır; tahmini isim eşleştirmesi yapılmaz. YÖK transkriptindeki Genel Not Ortalaması alanına öncelik verilir; bu alan yoksa belgedeki son kümülatif ortalama alınır. YÖK belgelerinin sütunlu ad/soyad düzeni ve Programı/ABD/ASD alanı desteklenir. Orijinal PDF (en fazla 5 MB), öğrenci hesabıyla aynı işlem içinde SQLite BLOB / PostgreSQL BYTEA olarak `student_transcripts` tablosunda saklanır. Boyutu, dosya adı, SHA-256 özeti ve yükleme zamanı tutulur. Admin panelindeki kullanıcı dizininde **Transkript indir** düğmesiyle orijinal PDF indirilir; indirme yalnızca yöneticiye açıktır. Önceden saklanmamış PDF’ler geriye dönük oluşturulamaz; bu kayıtlar **PDF kaydedilmemiş** olarak görünür. Eski onay bekleyen kayıtlar yeni kuralla otomatik onaylanmaz.
 
 Bu işlem PDF metninin tutarlılığını kontrol eder; dijital imza, barkod veya üniversite sistemi üzerinden belge gerçekliği doğrulamaz. E-posta doğrulama ve e-posta ile şifre sıfırlama henüz uygulanmamıştır.
 
@@ -62,3 +62,15 @@ npm run test:e2e
 ```
 
 E2E testleri ayrı geçici SQLite dosyası kullanır; yerel öğrenci kayıtlarını değiştirmez. Test öncesinde 3000 ve 5173 portları boş olmalıdır. Atama senaryoları `docs/assignment_cases/` altında tutulur; test verileri uygulamaya yüklenmez.
+
+## Başlangıç ayarlarına sıfırlama
+
+Admin panelindeki **Başlangıç ayarlarına sıfırla** bölümünde `SIFIRLA` yazarak işlemi başlatın. Hoca hesapları, kimlikleri, şifreleri ve uzmanlıkları korunur; gerçek kadro aktifleştirilir ve tüm kontenjanlar sıfırlanır. Öğrenciler, PDF belgeleri, tercihler, teklifler, atama günlükleri ve tercih arşivleri (veritabanı ve JSON dosyaları) kalıcı olarak silinir. Hocaların kullandığı bölümler korunur. Eski yöneticiler silinir; sunucudaki `ADMIN_EMAIL` ve `ADMIN_PASSWORD` ile tek bir yönetici yeniden oluşturulur. Silinen hesapların eski tokenleri geçersiz olur; kurulumdaki yönetici şifresiyle yeniden giriş gerekir.
+
+İşlem açılışta veya deploy sırasında otomatik çalışmaz. Sunucuda en az 12 karakterli `ADMIN_PASSWORD` bulunmalıdır; bu ayar eksikse hiçbir kayıt silinmez. Komut satırından, uygulamayı durdurarak da çalıştırabilirsiniz:
+
+```sh
+node backend/scripts/reset-system.js --execute
+```
+
+`DATABASE_URL` varsa PostgreSQL, yoksa `DB_PATH`/yerel SQLite sıfırlanır. Yanlış veritabanını seçmemek için sunucunun ortam ayarlarını kullanın.

@@ -4,8 +4,42 @@ const bcrypt = require('bcryptjs');
 const { getDb } = require('../db/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const engine = require('../engine/assignment');
+const { resetSystem, ResetError } = require('../services/reset-system');
+const crypto = require('node:crypto');
 
 const router = express.Router();
+
+router.post('/reset-system', authenticate, authorize('admin'), async (req, res, next) => {
+  if (req.body.confirmation !== 'SIFIRLA') {
+    return res.status(400).json({ error: 'Sıfırlama için SIFIRLA onayı gereklidir.' });
+  }
+  try {
+    const summary = await resetSystem(getDb());
+    res.json({ ...summary, message: 'Sistem sıfırlandı. Sunucudaki yönetici şifresiyle yeniden giriş yapın.' });
+  } catch (error) {
+    if (error instanceof ResetError) return res.status(400).json({ error: error.message });
+    next(error);
+  }
+});
+
+router.get('/students/:studentId/transcript', authenticate, authorize('admin'), async (req, res, next) => {
+  const studentId = Number(req.params.studentId);
+  if (!Number.isSafeInteger(studentId) || studentId <= 0) {
+    return res.status(400).json({ error: 'Geçerli bir öğrenci seçin.' });
+  }
+  try {
+    const transcript = await getDb().prepare('SELECT content, byte_size, sha256 FROM student_transcripts WHERE student_id = ?').get(studentId);
+    if (!transcript) return res.status(404).json({ error: 'Bu öğrenci için kaydedilmiş PDF transkript yok.' });
+    const content = Buffer.from(transcript.content);
+    if (content.length !== transcript.byte_size || crypto.createHash('sha256').update(content).digest('hex') !== transcript.sha256) {
+      throw new Error('Transkript bütünlüğü doğrulanamadı.');
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.attachment(`transkript-${studentId}.pdf`);
+    res.type('application/pdf').send(content);
+  } catch (error) { next(error); }
+});
 
 // Historical receipts are private and are not deleted when current preferences change.
 router.get('/selection-backups/export', authenticate, authorize('admin'), async (req, res, next) => {
@@ -219,6 +253,8 @@ router.get('/users', authenticate, authorize('admin'), async (req, res) => {
                 u.full_name,
                 u.email,
                 u.role,
+                s.id as student_id,
+                CASE WHEN t.id IS NULL THEN 0 ELSE 1 END as has_transcript,
                 d.name as department_name,
                 f.is_active,
                 s.gano,
@@ -229,6 +265,7 @@ router.get('/users', authenticate, authorize('admin'), async (req, res) => {
                 assigned_u.full_name as assigned_faculty_name
             FROM users u
             LEFT JOIN students s ON s.user_id = u.id
+            LEFT JOIN student_transcripts t ON t.student_id = s.id
             LEFT JOIN faculty f ON f.user_id = u.id
             LEFT JOIN departments d ON d.id = COALESCE(s.department_id, f.department_id)
             LEFT JOIN faculty assigned_f ON assigned_f.id = s.assigned_faculty_id

@@ -34,6 +34,34 @@ for (const status of ['accepted', 'rejected']) {
 const apiBaseUrl = 'http://127.0.0.1:3000/api';
 const studentPassword = 'Temp1234!';
 
+test('original PDF persists, downloads only for admin, and disappears when student is removed', async ({ page, request }) => {
+  const email = `pdf.${Date.now()}@example.invalid`;
+  const fullName = 'Transcript Test Student';
+  const registration = await registerStudent(request, { email, fullName });
+  const admin = await getAdminToken(request);
+  const adminHeaders = { Authorization: `Bearer ${admin}` };
+  const profile = await (await request.get(`${apiBaseUrl}/students/me`, {
+    headers: { Authorization: `Bearer ${registration.token}` },
+  })).json();
+  const url = `${apiBaseUrl}/admin/students/${profile.id}/transcript`;
+  expect((await request.get(url)).status()).toBe(401);
+  expect((await request.get(url, { headers: { Authorization: `Bearer ${registration.token}` } })).status()).toBe(403);
+  const downloaded = await request.get(url, { headers: adminHeaders });
+  expect(downloaded.status()).toBe(200);
+  expect(downloaded.headers()['content-type']).toContain('application/pdf');
+  expect(downloaded.headers()['cache-control']).toBe('no-store');
+  expect(await downloaded.body()).toEqual(makeTranscriptPdf({ fullName }));
+  await login(page, 'admin@ankara.edu.tr', 'AdminTest1234!');
+  const row = page.getByRole('row').filter({ hasText: email });
+  await expect(row.getByRole('button', { name: 'Transkript indir' })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await row.getByRole('button', { name: 'Transkript indir' }).click();
+  expect((await download).suggestedFilename()).toBe(`transkript-${profile.id}.pdf`);
+  expect((await request.delete(`${apiBaseUrl}/admin/users/${registration.user.id}`, { headers: adminHeaders })).status()).toBe(200);
+  expect((await request.get(url, { headers: adminHeaders })).status()).toBe(404);
+  expect((await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${registration.token}` } })).status()).toBe(401);
+});
+
 function escapePdfText(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
@@ -327,4 +355,32 @@ test('scored assignment locks an assigned student and writes score details', asy
 
   await login(page, email, studentPassword);
   await expect(page.getByRole('heading', { name: 'Danışman ataması tamamlandı' })).toBeVisible();
+});
+
+test('reset requires admin confirmation and preserves faculty identities', async ({ page, request }) => {
+  const admin = await getAdminToken(request);
+  const headers = { Authorization: `Bearer ${admin}` };
+  const before = await (await request.get(`${apiBaseUrl}/admin/users`, { headers })).json();
+  const teachers = before.filter(user => user.role === 'hoca').map(user => ({ id: user.id, email: user.email }));
+  const registered = await registerStudent(request, { email: `reset.${Date.now()}@example.invalid`, fullName: 'Reset Test Student' });
+  await saveFirstPreferences(request, registered.token);
+  const resetUrl = `${apiBaseUrl}/admin/reset-system`;
+  expect((await request.post(resetUrl, { headers: { Authorization: `Bearer ${registered.token}` }, data: { confirmation: 'SIFIRLA' } })).status()).toBe(403);
+  expect((await request.post(resetUrl, { headers, data: { confirmation: 'wrong' } })).status()).toBe(400);
+  await login(page, 'admin@ankara.edu.tr', 'AdminTest1234!');
+  const resetButton = page.getByRole('button', { name: 'Sistemi kalıcı olarak sıfırla' });
+  await expect(resetButton).toBeDisabled();
+  await page.getByLabel('Kalıcı silmeyi onaylamak için SIFIRLA yazın').fill('SIFIRLA');
+  await resetButton.click();
+  await expect(page).toHaveURL(/login/);
+  expect((await request.get(`${apiBaseUrl}/admin/users`, { headers })).status()).toBe(401);
+  expect((await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${registered.token}` } })).status()).toBe(401);
+  const newHeaders = { Authorization: `Bearer ${await getAdminToken(request)}` };
+  const after = await (await request.get(`${apiBaseUrl}/admin/users`, { headers: newHeaders })).json();
+  expect(after.filter(user => user.role === 'hoca').map(user => ({ id: user.id, email: user.email }))).toEqual(teachers);
+  expect(after.filter(user => user.role !== 'hoca')).toHaveLength(1);
+  expect(await (await request.get(`${apiBaseUrl}/admin/selection-backups/export`, { headers: newHeaders })).text()).toBe('');
+  expect(await (await request.get(`${apiBaseUrl}/admin/logs`, { headers: newHeaders })).json()).toEqual([]);
+  const faculty = await (await request.get(`${apiBaseUrl}/admin/faculty-overview`, { headers: newHeaders })).json();
+  expect(faculty.every(item => item.base_quota === 0 && item.current_quota === 0)).toBeTruthy();
 });

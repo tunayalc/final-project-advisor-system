@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { getDb } = require('../db/database');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32 || JWT_SECRET === 'danisman-atama-secret-key-2024') {
@@ -6,20 +7,27 @@ if (!JWT_SECRET || JWT_SECRET.length < 32 || JWT_SECRET === 'danisman-atama-secr
 }
 
 // JWT doğrulama middleware
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Yetkilendirme tokeni gerekli.' });
     }
 
     const token = authHeader.split(' ')[1];
+    let decoded;
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
-        next();
+        decoded = jwt.verify(token, JWT_SECRET);
     } catch (err) {
         return res.status(401).json({ error: 'Geçersiz veya süresi dolmuş token.' });
     }
+    try {
+        const user = await getDb().prepare('SELECT id, role FROM users WHERE id = ?').get(decoded.id);
+        if (!user || user.role !== decoded.role) {
+            return res.status(401).json({ error: 'Hesap artık mevcut değil. Yeniden giriş yapın.' });
+        }
+        req.user = decoded;
+        next();
+    } catch (error) { next(error); }
 }
 
 // Rol bazlı yetkilendirme middleware
