@@ -19,6 +19,10 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "yazl": "^3.3.1"
+  },
+  "devDependencies": {
+    "yauzl": "^3.4.0"
   }
 }

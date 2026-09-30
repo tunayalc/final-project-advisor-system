@@ -74,3 +74,16 @@ node backend/scripts/reset-system.js --execute
 ```
 
 `DATABASE_URL` varsa PostgreSQL, yoksa `DB_PATH`/yerel SQLite sıfırlanır. Yanlış veritabanını seçmemek için sunucunun ortam ayarlarını kullanın.
+
+## Tüm kayıtları ve transkriptleri indirme
+
+Yönetici panelindeki **Toplu indirme** alanı iki ZIP sunar:
+
+- **Tüm kayıtları indir**: `sistem-kayitlari.json` içinde kullanıcılar (şifreler hariç), bölümler, öğrenciler, hocalar, kontenjanlar, tercihler, teklifler, mevcut atamalar, işlem günlükleri, tercih geçmişi ve veri değişikliklerinin önceki/sonraki değerleri bulunur. Kaydedilmiş PDF transkriptler de aynı ZIP’e eklenir.
+- **Tüm transkriptleri indir**: yalnızca PDF’ler ve öğrenci-dosya eşleştirmelerini içeren `icerik.json` bulunur. Eksik PDF’ler dizinde açıkça belirtilir. Hiç PDF yoksa boş dizin bilgisiyle geçerli ZIP indirilir.
+
+Tekli indirme, kullanıcı dizinindeki **Transkript indir** düğmesinden sürer. PDF adları öğrenci kimliğini içerir; aynı orijinal ada sahip belgeler birbirinin üzerine yazılmaz. PDF ve tercih arşivlerinin SHA-256 bütünlüğü indirmeden önce kontrol edilir. ZIP hazırlanırken tutarlı bir veritabanı anlık görüntüsü alınır; PDF’ler tek tek işlenir ve geçici dosyalar indirme sonunda temizlenir.
+
+API: `GET /api/admin/system-export`, `GET /api/admin/transcripts/export`, `GET /api/admin/students/:studentId/transcript`. Üçü de yalnızca yöneticiye açıktır. Şifre hashleri, JWT anahtarları ve bağlantı bilgileri dışa aktarılmaz.
+
+`system_events`, iş tablolarındaki ekleme/güncelleme/silme işlemlerini veritabanı tetikleyicileriyle aynı transaction içinde kaydeder. Normal hesap silme işleminde geçmiş korunur; açık sistem sıfırlaması bu geçmişi de temizler. Yeni ayrıntılı geçmiş özelliği etkinleştirilmeden önceki değişiklikler, mevcut günlükler ve tercih arşivleri ölçüsünde dışa aktarılır; kaydedilmemiş geçmiş geriye dönük üretilmez. Bu arşiv uygulama verilerinin dışa aktarımıdır; otomatik geri yükleme aracı içermez.

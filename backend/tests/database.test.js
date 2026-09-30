@@ -97,7 +97,7 @@ test('explicit reset removes all non-faculty data and mirrors while preserving f
     const summary = await resetSystem(db);
     assert.equal(summary.preservedFaculty, facultyBefore.length);
     assert.deepEqual(await db.prepare("SELECT id, email, password_hash, full_name FROM users WHERE role = 'hoca' ORDER BY id").all(), facultyBefore);
-    for (const table of ['students', 'student_transcripts', 'preferences', 'pre_assignments', 'selection_backups', 'assignment_logs']) {
+    for (const table of ['students', 'student_transcripts', 'preferences', 'pre_assignments', 'selection_backups', 'assignment_logs', 'system_events']) {
         assert.equal((await db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get()).c, 0, table);
     }
     assert.equal((await db.prepare('SELECT COUNT(*) AS c FROM faculty WHERE base_quota <> 0 OR current_quota <> 0').get()).c, 0);

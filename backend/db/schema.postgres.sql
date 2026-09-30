@@ -91,3 +91,41 @@ CREATE TABLE IF NOT EXISTS student_transcripts (
     sha256 TEXT NOT NULL,
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS system_events (
+    id SERIAL PRIMARY KEY,
+    table_name TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    record_id INTEGER NOT NULL,
+    before_json TEXT,
+    after_json TEXT,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+
+CREATE OR REPLACE FUNCTION advisor.record_system_event() RETURNS TRIGGER AS $$
+DECLARE
+    previous JSONB;
+    current_record JSONB;
+BEGIN
+    IF TG_OP <> 'INSERT' THEN previous := to_jsonb(OLD) - 'password_hash' - 'content'; END IF;
+    IF TG_OP <> 'DELETE' THEN current_record := to_jsonb(NEW) - 'password_hash' - 'content'; END IF;
+    INSERT INTO advisor.system_events (table_name, operation, record_id, before_json, after_json)
+    VALUES (TG_TABLE_NAME, TG_OP, COALESCE((current_record->>'id')::INTEGER, (previous->>'id')::INTEGER),
+            previous::TEXT, current_record::TEXT);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+DECLARE
+    audited_table TEXT;
+BEGIN
+    FOREACH audited_table IN ARRAY ARRAY['departments', 'users', 'students', 'faculty', 'preferences', 'pre_assignments', 'assignment_logs', 'student_transcripts'] LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'audit_' || audited_table
+                       AND tgrelid = ('advisor.' || audited_table)::regclass) THEN
+            EXECUTE format('CREATE TRIGGER %I AFTER INSERT OR UPDATE OR DELETE ON advisor.%I FOR EACH ROW EXECUTE FUNCTION advisor.record_system_event()',
+                           'audit_' || audited_table, audited_table);
+        END IF;
+    END LOOP;
+END;
+$$;

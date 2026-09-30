@@ -52,32 +52,33 @@ function getDb() {
         };
         return context.getStore() || postgres ? execute() : exclusive(execute);
     };
+    const transaction = (callback, readOnly = false) => async (...args) => {
+        if (context.getStore()) return callback(...args);
+        const execute = async () => {
+            const client = postgres ? await pool.connect() : null;
+            try {
+                if (client) {
+                    await client.query(readOnly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
+                    if (!readOnly) await client.query('SELECT pg_advisory_xact_lock(74182901)');
+                } else sqlite.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
+                const result = await context.run({ client }, () => callback(...args));
+                if (client) await client.query('COMMIT'); else sqlite.exec('COMMIT');
+                return result;
+            } catch (error) {
+                if (client) await client.query('ROLLBACK'); else sqlite.exec('ROLLBACK');
+                throw error;
+            } finally { client?.release(); }
+        };
+        return postgres ? execute() : exclusive(execute);
+    };
     database = {
         prepare: sql => ({
             get: (...params) => query(sql, params, 'get'),
             all: (...params) => query(sql, params, 'all'),
             run: (...params) => query(sql, params, 'run'),
         }),
-        transaction: callback => async (...args) => {
-            if (context.getStore()) return callback(...args);
-            const execute = async () => {
-                const client = postgres ? await pool.connect() : null;
-                try {
-                    if (client) {
-                        await client.query('BEGIN');
-                        // Serialize writes across backend instances, including placement.
-                        await client.query('SELECT pg_advisory_xact_lock(74182901)');
-                    } else sqlite.exec('BEGIN IMMEDIATE');
-                    const result = await context.run({ client }, () => callback(...args));
-                    if (client) await client.query('COMMIT'); else sqlite.exec('COMMIT');
-                    return result;
-                } catch (error) {
-                    if (client) await client.query('ROLLBACK'); else sqlite.exec('ROLLBACK');
-                    throw error;
-                } finally { client?.release(); }
-            };
-            return postgres ? execute() : exclusive(execute);
-        },
+        transaction,
+        snapshot: callback => transaction(callback, true),
         close: () => postgres ? pool.end() : sqlite.close(),
         initialize: async () => {
             if (!postgres) return;

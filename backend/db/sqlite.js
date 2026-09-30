@@ -90,6 +90,7 @@ function initializeDb() {
     const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
     db.exec(schema);
     migrateDb();
+    require('./audit').initializeSqliteAudit(db);
 
     // Fresh installations require an explicit administrator password.
     const adminCount = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get().count;

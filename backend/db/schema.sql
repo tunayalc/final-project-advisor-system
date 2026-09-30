@@ -89,3 +89,14 @@ CREATE TABLE IF NOT EXISTS student_transcripts (
     sha256 TEXT NOT NULL,
     uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Independent of account lifecycle; only an explicit system reset clears this history.
+CREATE TABLE IF NOT EXISTS system_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    record_id INTEGER NOT NULL,
+    before_json TEXT,
+    after_json TEXT,
+    occurred_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);

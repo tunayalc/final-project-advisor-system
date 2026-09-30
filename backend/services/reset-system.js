@@ -32,6 +32,7 @@ async function resetSystem(db) {
     await db.prepare('DELETE FROM departments WHERE id NOT IN (SELECT department_id FROM faculty)').run();
     await db.prepare('INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)')
       .run(email, passwordHash, 'admin', 'Sistem Yöneticisi');
+    await db.prepare('DELETE FROM system_events').run();
     return { removedUsers, preservedFaculty, adminEmail: email };
   })();
 

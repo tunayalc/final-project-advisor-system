@@ -5,9 +5,30 @@ const { getDb } = require('../db/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const engine = require('../engine/assignment');
 const { resetSystem, ResetError } = require('../services/reset-system');
-const crypto = require('node:crypto');
+const { pipeline } = require('node:stream/promises');
+const { prepareExport, exportZip, transcriptBytes } = require('../services/system-export');
 
 const router = express.Router();
+
+function downloadArchive(transcriptsOnly) {
+  return async (req, res, next) => {
+    let prepared;
+    try {
+      prepared = await prepareExport(getDb(), { transcriptsOnly, aborted: () => res.destroyed });
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.attachment(transcriptsOnly ? 'tum-transkriptler.zip' : 'tum-sistem-kayitlari.zip');
+      res.type('application/zip');
+      await pipeline(exportZip(prepared), res);
+    } catch (error) {
+      if (res.headersSent || res.destroyed) res.destroy();
+      else next(error);
+    } finally { if (prepared) await prepared.cleanup(); }
+  };
+}
+
+router.get('/system-export', authenticate, authorize('admin'), downloadArchive(false));
+router.get('/transcripts/export', authenticate, authorize('admin'), downloadArchive(true));
 
 router.post('/reset-system', authenticate, authorize('admin'), async (req, res, next) => {
   if (req.body.confirmation !== 'SIFIRLA') {
@@ -30,10 +51,7 @@ router.get('/students/:studentId/transcript', authenticate, authorize('admin'), 
   try {
     const transcript = await getDb().prepare('SELECT content, byte_size, sha256 FROM student_transcripts WHERE student_id = ?').get(studentId);
     if (!transcript) return res.status(404).json({ error: 'Bu öğrenci için kaydedilmiş PDF transkript yok.' });
-    const content = Buffer.from(transcript.content);
-    if (content.length !== transcript.byte_size || crypto.createHash('sha256').update(content).digest('hex') !== transcript.sha256) {
-      throw new Error('Transkript bütünlüğü doğrulanamadı.');
-    }
+    const content = transcriptBytes(transcript);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.attachment(`transkript-${studentId}.pdf`);

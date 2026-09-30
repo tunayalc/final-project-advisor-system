@@ -39,6 +39,7 @@ export default function AdminDashboard() {
   const [creatingUser, setCreatingUser] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [exporting, setExporting] = useState('');
   const [notice, setNotice] = useState({ type: '', text: '' });
 
   const loadData = async () => {
@@ -196,6 +197,25 @@ export default function AdminDashboard() {
     } catch {
       setNotice({ type: 'error', text: 'Transkript indirilemedi. Lütfen yeniden deneyin.' });
     }
+  };
+
+  const handleArchiveDownload = async (kind) => {
+    if (exporting) return;
+    setExporting(kind);
+    try {
+      const transcriptsOnly = kind === 'transcripts';
+      const response = await api.get(transcriptsOnly ? '/admin/transcripts/export' : '/admin/system-export', { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = transcriptsOnly ? 'tum-transkriptler.zip' : 'tum-sistem-kayitlari.zip';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setNotice({ type: 'error', text: 'Arşiv indirilemedi. Lütfen yeniden deneyin.' });
+    } finally { setExporting(''); }
   };
 
   const handleReset = async (event) => {
@@ -378,6 +398,31 @@ export default function AdminDashboard() {
       )}
 
 
+
+      <section className="panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Arşiv ve Belgeler</p>
+            <h2>Toplu indirme</h2>
+          </div>
+        </div>
+        <p className="muted-copy">
+          Tüm kayıtları tek ZIP dosyasında indirin: işlem geçmişi, öğrenci ve hoca bilgileri,
+          tercihler, teklifler, atamalar, kontenjanlar ve PDF transkriptler.
+          Yalnızca transkriptleri ayrı ZIP olarak da indirebilirsiniz.
+          Öğrenci bazında PDF indirmek için aşağıdaki kullanıcı dizinini kullanın.
+        </p>
+        <div className="action-row">
+          <button type="button" className="btn btn-primary" disabled={Boolean(exporting)}
+            onClick={() => handleArchiveDownload('system')}>
+            <Download size={16} /> {exporting === 'system' ? 'Arşiv hazırlanıyor' : 'Tüm kayıtları indir'}
+          </button>
+          <button type="button" className="btn btn-outline" disabled={Boolean(exporting)}
+            onClick={() => handleArchiveDownload('transcripts')}>
+            <Download size={16} /> {exporting === 'transcripts' ? 'Arşiv hazırlanıyor' : 'Tüm transkriptleri indir'}
+          </button>
+        </div>
+      </section>
 
       <section className="panel">
         <div className="section-header">

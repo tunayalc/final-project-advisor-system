@@ -357,6 +357,32 @@ test('scored assignment locks an assigned student and writes score details', asy
   await expect(page.getByRole('heading', { name: 'Danışman ataması tamamlandı' })).toBeVisible();
 });
 
+test('admin can download complete system and transcript archives while students cannot', async ({ page, request }) => {
+  const admin = await getAdminToken(request);
+  const headers = { Authorization: `Bearer ${admin}` };
+  const registration = await registerStudent(request, { email: `bulk.${Date.now()}@example.invalid`, fullName: 'Bulk Archive Student' });
+  await saveFirstPreferences(request, registration.token);
+  for (const endpoint of ['system-export', 'transcripts/export']) {
+    const url = `${apiBaseUrl}/admin/${endpoint}`;
+    expect((await request.get(url)).status()).toBe(401);
+    expect((await request.get(url, { headers: { Authorization: `Bearer ${registration.token}` } })).status()).toBe(403);
+    const response = await request.get(url, { headers });
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('application/zip');
+    expect(response.headers()['cache-control']).toBe('no-store');
+    const body = await response.body();
+    expect(body.subarray(0, 2).toString()).toBe('PK');
+    expect(body.includes(Buffer.from('icerik.json'))).toBeTruthy();
+  }
+  await login(page, 'admin@ankara.edu.tr', 'AdminTest1234!');
+  await expect(page.getByRole('heading', { name: 'Toplu indirme', exact: true })).toBeVisible();
+  for (const [label, filename] of [['Tüm kayıtları indir', 'tum-sistem-kayitlari.zip'], ['Tüm transkriptleri indir', 'tum-transkriptler.zip']]) {
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: label, exact: true }).click();
+    expect((await download).suggestedFilename()).toBe(filename);
+  }
+});
+
 test('reset requires admin confirmation and preserves faculty identities', async ({ page, request }) => {
   const admin = await getAdminToken(request);
   const headers = { Authorization: `Bearer ${admin}` };
