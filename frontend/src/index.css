@@ -191,7 +191,7 @@ button, input, select { font: inherit; }
 .login-brand, .feature-stack, .stack-layout, .card-list, .detail-stack, .stack-form, .action-stack { display: flex; flex-direction: column; gap: 16px; }
 .login-brand {
   position: relative;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 34px 22px 34px 24px;
   border-left: 5px solid var(--accent);
 }
@@ -216,6 +216,20 @@ button, input, select { font: inherit; }
 }
 
 .login-panel { padding: 28px; }
+
+.transcript-notice {
+  padding: 20px;
+  border: 1px solid rgba(138, 90, 20, 0.3);
+  border-left: 5px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: #fff5df;
+  line-height: 1.65;
+}
+.transcript-notice-heading { display: flex; align-items: flex-start; gap: 10px; color: var(--warning); }
+.transcript-notice-heading svg { flex-shrink: 0; margin-top: 3px; }
+.transcript-notice h2 { margin: 0; font-size: 1.2rem; line-height: 1.4; color: var(--warning); }
+.transcript-notice p { margin: 12px 0 0; }
+.field-block small { color: var(--ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
 
 .hero-banner h1, .panel h1, .panel h2, .panel h3, .login-brand h1 {
   margin: 0;

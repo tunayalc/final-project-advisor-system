@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileText, Lock, UserPlus, UserRound } from 'lucide-react';
+import { ArrowRight, FileText, Lock, TriangleAlert, UserPlus, UserRound } from 'lucide-react';
 import api from '../api';
 import AssignmentGuide from '../components/AssignmentGuide';
 
@@ -117,7 +117,15 @@ export default function Login({ onLogin }) {
       <section className="login-brand">
         <p className="eyebrow">Ankara Üniversitesi</p>
         <h1>Bitirme projeniz için danışmanınızı tercih edin.</h1>
-
+        <section className="transcript-notice" aria-labelledby="transcript-notice-title">
+          <div className="transcript-notice-heading">
+            <TriangleAlert size={22} aria-hidden="true" />
+            <h2 id="transcript-notice-title">Önemli: Güncel transkript ile kayıt olun</h2>
+          </div>
+          <p>Kayıt olmadan önce e-Devlet transkriptinizdeki GANO’nun güncel ve doğru olduğunu kontrol edin. Sistemdeki ortalamanız, yüklediğiniz PDF’den alınır.</p>
+          <p>Ortalamanız hatalı veya eski görünüyorsa OBS’de <strong>Öğrenci &gt; İşlemler &gt; YÖKSİS e-Devlet Bilgi Güncelle</strong> bölümünden bilgilerinizi güncelleyin.</p>
+          <p>Bu işlemden sonra e-Devlet transkriptiniz en geç bir gün içinde güncellenir. <strong>Güncel ortalamanızı gördükten sonra yeni transkript PDF’ini indirip kayıt olun.</strong></p>
+        </section>
       </section>
 
       <section className="panel login-panel">
@@ -165,7 +173,7 @@ export default function Login({ onLogin }) {
                   <input
                     type="email"
                     className="app-input"
-                    placeholder="örnek@ankara.edu.tr"
+                    placeholder="ogrencinumarasi@ogrenci.ankara.edu.tr"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     required
@@ -218,11 +226,13 @@ export default function Login({ onLogin }) {
                 <input
                   type="email"
                   className="app-input"
-                  placeholder="ogrenci@ankara.edu.tr"
+                  placeholder="ogrencinumarasi@ogrenci.ankara.edu.tr"
+                  aria-describedby="student-email-help"
                   value={registerForm.email}
                   onChange={(event) => updateRegisterForm('email', event.target.value)}
                   required
                 />
+                <small id="student-email-help">Öğrenci e-posta adresinizi ogrencinumarasi@ogrenci.ankara.edu.tr formatında girin.</small>
               </label>
 
               <div className="duo-grid align-start">
@@ -284,7 +294,7 @@ export default function Login({ onLogin }) {
                   />
                 </div>
               </label>
-              <small id="transcript-help">Metni seçilebilen, şifresiz bir PDF yükleyin (en fazla 5 MB). Dört bilgiden biri okunamazsa veya eşleşmezse kayıt oluşturulmaz.</small>
+              <small id="transcript-help">GANO’nuzun doğru göründüğü güncel e-Devlet transkriptini yükleyin. PDF metni seçilebilir ve şifresiz olmalıdır (en fazla 5 MB). Dört bilgiden biri okunamazsa veya eşleşmezse kayıt oluşturulmaz.</small>
 
               <button type="submit" className="btn btn-primary btn-wide" disabled={registerLoading}>
                 <UserPlus size={16} />
