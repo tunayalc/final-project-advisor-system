@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { Buffer } from 'node:buffer';
+import { mkdirSync } from 'node:fs';
 
 for (const status of ['accepted', 'rejected']) {
   test(`invitation ${status} is archived once and duplicate responses are rejected`, async ({ request }) => {
@@ -33,6 +34,107 @@ for (const status of ['accepted', 'rejected']) {
 
 const apiBaseUrl = 'http://127.0.0.1:3000/api';
 const studentPassword = 'Temp1234!';
+
+test('email change verifies password, preserves student data and invalidates previous sessions', async ({ request }) => {
+  const unique = Date.now();
+  const original = `email.old.${unique}@example.invalid`;
+  const newEmail = `email.new.${unique}@example.invalid`;
+  const registration = await registerStudent(request, { email: original, fullName: 'Email Update Student' });
+  const preferences = await saveFirstPreferences(request, registration.token, 2);
+  const profileBefore = await (await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${registration.token}` } })).json();
+  const change = data => request.post(`${apiBaseUrl}/auth/change-email`, { headers: { Authorization: `Bearer ${registration.token}` }, data });
+  expect((await request.post(`${apiBaseUrl}/auth/change-email`, { data: { new_email: newEmail, current_password: studentPassword } })).status()).toBe(401);
+  for (const new_email of ['invalid', ['test@example.invalid'], `${'a'.repeat(255)}@example.invalid`]) {
+    expect((await change({ new_email, current_password: studentPassword })).status()).toBe(400);
+  }
+  expect((await change({ new_email: newEmail })).status()).toBe(400);
+  expect((await change({ new_email: newEmail, current_password: 'incorrect' })).status()).toBe(401);
+  expect((await change({ new_email: original, current_password: studentPassword })).status()).toBe(400);
+  expect((await change({ new_email: 'admin@ankara.edu.tr', current_password: studentPassword })).status()).toBe(409);
+  const updated = await change({ new_email: ` ${newEmail.toUpperCase()} `, current_password: studentPassword, user_id: 1, role: 'admin' });
+  expect(updated.status()).toBe(200);
+  const session = await updated.json();
+  expect(session.user).toMatchObject({ id: registration.user.id, email: newEmail, role: 'ogrenci' });
+  expect(session.user).not.toHaveProperty('password_hash');
+  expect((await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${registration.token}` } })).status()).toBe(401);
+  const headers = { Authorization: `Bearer ${session.token}` };
+  expect(await (await request.get(`${apiBaseUrl}/students/me`, { headers })).json()).toEqual(profileBefore);
+  expect((await (await request.get(`${apiBaseUrl}/students/preferences`, { headers })).json()).map(p => p.id)).toEqual(preferences);
+  const me = await request.get(`${apiBaseUrl}/auth/me`, { headers });
+  expect(me.headers()['cache-control']).toBe('no-store');
+  expect((await me.json()).user.email).toBe(newEmail);
+  expect((await request.post(`${apiBaseUrl}/auth/login`, { data: { email: original, password: studentPassword } })).status()).toBe(401);
+  await loginApi(request, newEmail, studentPassword);
+  const admin = await getAdminToken(request);
+  const pdf = await request.get(`${apiBaseUrl}/admin/students/${profileBefore.id}/transcript`, { headers: { Authorization: `Bearer ${admin}` } });
+  expect(await pdf.body()).toEqual(makeTranscriptPdf({ fullName: 'Email Update Student' }));
+});
+
+test('faculty and administrators can update their own email', async ({ request }) => {
+  const admin = await getAdminToken(request);
+  const email = `faculty.email.${Date.now()}@example.invalid`;
+  const created = await request.post(`${apiBaseUrl}/admin/users`, { headers: { Authorization: `Bearer ${admin}` }, data: {
+    email, password: 'FacultyMail1234!', full_name: 'Email Test Faculty', department_id: 1,
+  } });
+  expect(created.status()).toBe(201);
+  for (const account of [{ email, password: 'FacultyMail1234!', role: 'hoca' }, { email: 'admin@ankara.edu.tr', password: 'AdminTest1234!', role: 'admin' }]) {
+    const token = await loginApi(request, account.email, account.password);
+    const newEmail = `updated.${account.role}.${Date.now()}@example.invalid`;
+    const updated = await request.post(`${apiBaseUrl}/auth/change-email`, { headers: { Authorization: `Bearer ${token}` }, data: { new_email: newEmail, current_password: account.password } });
+    expect(updated.status()).toBe(200);
+    const next = await updated.json();
+    try {
+      expect(next.user.role).toBe(account.role);
+      const login = await request.post(`${apiBaseUrl}/auth/login`, { data: { email: newEmail, password: account.password } });
+      expect(login.status()).toBe(200);
+      expect((await login.json()).user.id).toBe(next.user.id);
+    } finally {
+      const restored = await request.post(`${apiBaseUrl}/auth/change-email`, { headers: { Authorization: `Bearer ${next.token}` }, data: { new_email: account.email, current_password: account.password } });
+      expect(restored.status()).toBe(200);
+    }
+  }
+  const cleanupAdmin = await getAdminToken(request);
+  expect((await request.delete(`${apiBaseUrl}/admin/users/${(await created.json()).user.id}`, { headers: { Authorization: `Bearer ${cleanupAdmin}` } })).status()).toBe(200);
+});
+
+test('concurrent email updates cannot take the same address', async ({ request }) => {
+  const unique = Date.now();
+  const students = await Promise.all([1, 2].map(i => registerStudent(request, { email: `race.${unique}.${i}@example.invalid`, fullName: 'Concurrent Email Student' })));
+  const address = `unique.${unique}@example.invalid`;
+  const responses = await Promise.all(students.map(student => request.post(`${apiBaseUrl}/auth/change-email`, { headers: { Authorization: `Bearer ${student.token}` }, data: { new_email: address, current_password: studentPassword } })));
+  expect(responses.map(r => r.status()).sort()).toEqual([200, 409]);
+  const loser = responses.findIndex(r => r.status() === 409);
+  expect((await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${students[loser].token}` } })).status()).toBe(200);
+});
+
+test('student updates email from account settings and logs back in using it', async ({ page, request }) => {
+  const unique = Date.now();
+  const original = `ui.email.${unique}@example.invalid`;
+  const updated = `updated.student.${unique}@ogrenci.ankara.edu.tr`;
+  await registerStudent(request, { email: original, fullName: 'Email Settings Student' });
+  await login(page, original, studentPassword);
+  await page.getByRole('button', { name: 'Hesap', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Hesap ayarları', exact: true });
+  await expect(panel).toContainText(original);
+  await panel.getByLabel('Yeni e-posta adresi').fill(updated);
+  await panel.getByLabel('E-posta değişikliği için mevcut şifre').fill('incorrect');
+  await panel.getByRole('button', { name: 'E-postayı güncelle' }).click();
+  await expect(panel.getByRole('status')).toContainText('Mevcut şifre doğrulanamadı');
+  await panel.getByLabel('E-posta değişikliği için mevcut şifre').fill(studentPassword);
+  await panel.getByRole('button', { name: 'E-postayı güncelle' }).click();
+  await expect(panel.getByRole('status')).toContainText('E-posta adresiniz güncellendi');
+  await expect(panel.locator('.account-email')).toContainText(updated);
+  await page.reload();
+  await expect(panel.locator('.account-email')).toContainText(updated);
+  await page.getByRole('button', { name: 'Hesap', exact: true }).click();
+  mkdirSync('../output/playwright/account-email-change', { recursive: true });
+  await panel.getByRole('heading', { name: 'E-posta güncelle', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '../output/playwright/account-email-change/mock-hesap-ayarlari.png' });
+  await page.getByRole('button', { name: 'Çıkış', exact: true }).click();
+  await login(page, updated, studentPassword);
+  await expect(page).toHaveURL(/\/student$/);
+  await expect(panel.locator('.account-email')).toContainText(updated);
+});
 
 test('original PDF persists, downloads only for admin, and disappears when student is removed', async ({ page, request }) => {
   const email = `pdf.${Date.now()}@example.invalid`;

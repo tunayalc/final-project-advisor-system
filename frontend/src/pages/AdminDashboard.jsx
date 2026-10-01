@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Calculator, Check, Download, Play, RefreshCcw, ShieldCheck, Trash2, UserCog, UserPlus, Users, X } from 'lucide-react';
 import api from '../api';
-import PasswordPanel from '../components/PasswordPanel';
+import AccountSettings from '../components/AccountSettings';
 
 const ROLE_LABELS = {
   admin: 'Yönetici',
@@ -23,7 +23,7 @@ const emptyUserForm = {
   expertise_keywords: '',
 };
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ user, onUserUpdated }) {
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState([]);
   const [users, setUsers] = useState([]);
@@ -880,7 +880,7 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <PasswordPanel />
+        <AccountSettings user={user} onUserUpdated={updated => { onUserUpdated(updated); loadData(); }} />
       </div>
 
       <section className="panel">

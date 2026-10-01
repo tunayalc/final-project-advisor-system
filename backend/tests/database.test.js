@@ -84,6 +84,24 @@ test('transcript binaries are transactional and cascade when their student is de
     assert.equal(await db.prepare('SELECT id FROM student_transcripts WHERE student_id = ?').get(student.lastInsertRowid), undefined);
 });
 
+test('faculty email changes survive SQLite restart and repeated PostgreSQL seeding without duplicates', async () => {
+    const { spawnSync } = require('node:child_process');
+    const before = await db.prepare("SELECT u.*, f.roster_key, f.id AS faculty_id FROM users u JOIN faculty f ON f.user_id = u.id WHERE f.roster_key IS NOT NULL ORDER BY u.id LIMIT 1").get();
+    const count = (await db.prepare('SELECT COUNT(*) AS c FROM faculty').get()).c;
+    const email = 'updated.core.faculty@example.invalid';
+    await db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, before.id);
+    await db.prepare('UPDATE faculty SET is_active = 0 WHERE id = ?').run(before.faculty_id);
+    // Exercise both production seed implementations against the isolated database.
+    await require('../db/seed-postgres')(db);
+    const restart = spawnSync(process.execPath, ['-e', "require('./backend/db/sqlite').getDb().close()"], { cwd: path.resolve(__dirname, '../..'), env: process.env, encoding: 'utf8' });
+    assert.equal(restart.status, 0, restart.stderr);
+    const after = await db.prepare('SELECT * FROM users WHERE id = ?').get(before.id);
+    assert.equal(after.email, email);
+    assert.equal(after.password_hash, before.password_hash);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS c FROM faculty').get()).c, count);
+    assert.equal(await db.prepare('SELECT id FROM users WHERE email = ?').get(before.email), undefined);
+});
+
 test('explicit reset removes all non-faculty data and mirrors while preserving faculty passwords', async () => {
     const { resetSystem } = require('../services/reset-system');
     const facultyBefore = await db.prepare("SELECT id, email, password_hash, full_name FROM users WHERE role = 'hoca' ORDER BY id").all();
@@ -101,6 +119,7 @@ test('explicit reset removes all non-faculty data and mirrors while preserving f
         assert.equal((await db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get()).c, 0, table);
     }
     assert.equal((await db.prepare('SELECT COUNT(*) AS c FROM faculty WHERE base_quota <> 0 OR current_quota <> 0').get()).c, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS c FROM faculty WHERE roster_key IS NOT NULL AND is_active <> 1').get()).c, 0);
     assert.equal((await db.prepare("SELECT COUNT(*) AS c FROM users WHERE role <> 'hoca'").get()).c, 1);
     const admin = await db.prepare("SELECT id, password_hash FROM users WHERE role = 'admin'").get();
     assert.notEqual(admin.id, oldAdmin.id);

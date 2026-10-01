@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS students (
 
 CREATE TABLE IF NOT EXISTS faculty (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    roster_key TEXT UNIQUE,
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
     department_id INTEGER NOT NULL REFERENCES departments(id),
     expertise_keywords TEXT DEFAULT '',

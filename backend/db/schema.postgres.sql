@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS faculty (
     id SERIAL PRIMARY KEY,
+    roster_key TEXT UNIQUE,
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
     department_id INTEGER NOT NULL REFERENCES departments(id),
     expertise_keywords TEXT DEFAULT '',
@@ -35,6 +36,8 @@ CREATE TABLE IF NOT EXISTS faculty (
     base_quota INTEGER DEFAULT 0,
     current_quota INTEGER DEFAULT 0
 );
+ALTER TABLE faculty ADD COLUMN IF NOT EXISTS roster_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS faculty_roster_key ON faculty(roster_key);
 
 CREATE TABLE IF NOT EXISTS students (
     id SERIAL PRIMARY KEY,

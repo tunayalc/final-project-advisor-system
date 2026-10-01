@@ -27,7 +27,7 @@ async function resetSystem(db) {
     await db.prepare('UPDATE faculty SET base_quota = 0, current_quota = 0').run();
     // Restore the roster's initial activity while retaining all teacher identities/passwords.
     for (const [facultyEmail] of CORE_FACULTY) {
-      await db.prepare('UPDATE faculty SET is_active = 1 WHERE user_id IN (SELECT id FROM users WHERE email = ?)').run(facultyEmail);
+      await db.prepare('UPDATE faculty SET is_active = 1 WHERE roster_key = ?').run(facultyEmail);
     }
     await db.prepare('DELETE FROM departments WHERE id NOT IN (SELECT department_id FROM faculty)').run();
     await db.prepare('INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)')

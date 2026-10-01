@@ -31,6 +31,12 @@ Remove-Item Env:ACCOUNT_PASSWORD
 
 Şifreyi ilgili hocaya güvenli şekilde ilettikten sonra hoca kendi panelinden değiştirebilir. Bu araç mevcut yönetici şifresini değiştirmek için de kullanılabilir.
 
+## Hesap ayarları
+
+Öğrenci, hoca ve yönetici üst menüdeki **Hesap** düğmesinden e-posta adresini ve şifresini değiştirebilir. E-posta güncellemesi mevcut şifreyle doğrulanır; başka hesapta kullanılan bir adres kabul edilmez. Sonraki girişler yeni e-posta ile yapılır. Güncellemeyi yapan oturum devam eder, eski adresi taşıyan diğer oturumlar yeniden giriş ister. Transkriptler, tercihler, atamalar ve hesap kimliği korunur. Hoca kadrosu değişebilir e-posta yerine kalıcı `roster_key` üzerinden eşleştirilir; yeniden başlatma eski adresle ikinci hesap oluşturmaz.
+
+API: `GET /api/auth/me`, `POST /api/auth/change-email` (`new_email`, `current_password`), `POST /api/auth/change-password` (`current_password`, `new_password`). Her işlem giriş gerektirir ve yalnızca mevcut kullanıcıyı etkiler.
+
 ## Öğrenci kaydı
 
 Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş yılı ve PDF transkript gönderilir. Tek bölüm Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği'dir.

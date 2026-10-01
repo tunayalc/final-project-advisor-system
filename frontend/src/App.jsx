@@ -5,6 +5,7 @@ import StudentDashboard from './pages/StudentDashboard';
 import FacultyDashboard from './pages/FacultyDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Navbar from './components/Navbar';
+import api from './api';
 
 const DASHBOARD_BY_ROLE = {
   admin: '/admin',
@@ -52,6 +53,36 @@ function App() {
   const [user, setUser] = useState(() => readStoredSession().user);
 
   useEffect(() => {
+    const { token } = readStoredSession();
+    if (!token) return;
+    let active = true;
+    api.get('/auth/me').then(({ data }) => {
+      if (!active || localStorage.getItem('token') !== token) return;
+      setUser(current => {
+        if (!current || current.id !== data.user.id) return current;
+        const updated = { ...current, ...data.user };
+        localStorage.setItem('user', JSON.stringify(updated));
+        return updated;
+      });
+    }).catch(error => {
+      if (active && error.response?.status === 401 && localStorage.getItem('token') === token) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
+        navigate('/login');
+      }
+    });
+    return () => { active = false; };
+  }, [navigate]);
+
+  const handleUserUpdated = (updatedUser) => {
+    const current = readStoredSession().user;
+    const updated = { ...current, ...updatedUser };
+    localStorage.setItem('user', JSON.stringify(updated));
+    setUser(updated);
+  };
+
+  useEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
   }, [location.pathname]);
 
@@ -80,7 +111,7 @@ function App() {
             path="/student"
             element={(
               <ProtectedRoute allowedRoles={['ogrenci']}>
-                <StudentDashboard user={user} />
+                <StudentDashboard user={user} onUserUpdated={handleUserUpdated} />
               </ProtectedRoute>
             )}
           />
@@ -89,7 +120,7 @@ function App() {
             path="/faculty"
             element={(
               <ProtectedRoute allowedRoles={['hoca']}>
-                <FacultyDashboard user={user} />
+                <FacultyDashboard user={user} onUserUpdated={handleUserUpdated} />
               </ProtectedRoute>
             )}
           />
@@ -98,7 +129,7 @@ function App() {
             path="/admin"
             element={(
               <ProtectedRoute allowedRoles={['admin']}>
-                <AdminDashboard user={user} />
+                <AdminDashboard user={user} onUserUpdated={handleUserUpdated} />
               </ProtectedRoute>
             )}
           />

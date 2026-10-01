@@ -18,6 +18,10 @@ function hasColumn(tableName, columnName) {
 }
 
 function migrateDb() {
+    if (!hasColumn('faculty', 'roster_key')) {
+        db.exec('ALTER TABLE faculty ADD COLUMN roster_key TEXT');
+    }
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS faculty_roster_key ON faculty(roster_key)');
     db.prepare("INSERT OR IGNORE INTO departments (id, name) VALUES (?, ?)").run(1, 'Yapay Zeka ve Veri Mühendisliği');
     db.prepare("INSERT OR IGNORE INTO departments (name) VALUES (?)").run('Yapay Zeka ve Veri Mühendisliği');
 
@@ -51,6 +55,7 @@ function ensureCoreFaculty() {
         'INSERT OR IGNORE INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)'
     );
     const getUser = db.prepare('SELECT id FROM users WHERE email = ? AND role = ?');
+    const getRosterUser = db.prepare('SELECT user_id AS id FROM faculty WHERE roster_key = ?');
     const getDepartment = db.prepare('SELECT id FROM departments WHERE name = ?');
     const insertFaculty = db.prepare(`
         INSERT OR IGNORE INTO faculty (user_id, department_id, expertise_keywords, base_quota, current_quota, is_active)
@@ -63,13 +68,15 @@ function ensureCoreFaculty() {
             db.prepare('UPDATE faculty SET is_active = 0 WHERE user_id IN (SELECT id FROM users WHERE email = ?)').run(email);
         }
         CORE_FACULTY.forEach(([email, fullName, departmentName, expertiseKeywords]) => {
-            if (!getUser.get(email, 'hoca')) {
+            let user = getRosterUser.get(email) || getUser.get(email, 'hoca');
+            if (!user) {
                 insertUser.run(email, bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), 'hoca', fullName);
+                user = getUser.get(email, 'hoca');
             }
-            const user = getUser.get(email, 'hoca');
             const department = getDepartment.get(departmentName);
             if (user && department) {
                 insertFaculty.run(user.id, department.id, expertiseKeywords);
+                db.prepare('UPDATE faculty SET roster_key = ? WHERE user_id = ? AND roster_key IS NULL').run(email, user.id);
             }
         });
     })();

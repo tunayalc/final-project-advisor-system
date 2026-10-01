@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, GraduationCap, Mail, MoveRight, Save, Trash2 } from 'lucide-react';
 import api from '../api';
-import PasswordPanel from '../components/PasswordPanel';
+import AccountSettings from '../components/AccountSettings';
 
 function readStoredUser() {
   try {
@@ -11,7 +11,7 @@ function readStoredUser() {
   }
 }
 
-export default function StudentDashboard({ user }) {
+export default function StudentDashboard({ user, onUserUpdated }) {
   const [profile, setProfile] = useState(null);
   const [facultyList, setFacultyList] = useState([]);
   const [preferences, setPreferences] = useState([]);
@@ -217,7 +217,7 @@ export default function StudentDashboard({ user }) {
             </div>
           </section>
 
-          <PasswordPanel />
+          <AccountSettings user={user} onUserUpdated={onUserUpdated} />
         </div>
       ) : isAssigned ? (
         <div className="duo-grid">
@@ -236,7 +236,7 @@ export default function StudentDashboard({ user }) {
             </div>
           </section>
 
-          <PasswordPanel />
+          <AccountSettings user={user} onUserUpdated={onUserUpdated} />
         </div>
       ) : (
         <>
@@ -383,7 +383,7 @@ export default function StudentDashboard({ user }) {
             </section>
           </div>
 
-          <PasswordPanel />
+          <AccountSettings user={user} onUserUpdated={onUserUpdated} />
         </>
       )}
     </div>

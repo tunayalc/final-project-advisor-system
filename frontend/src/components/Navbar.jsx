@@ -23,7 +23,7 @@ export default function Navbar({ user, onLogout, onOpenPasswordDialog }) {
       return;
     }
 
-    const passwordPanel = document.getElementById('password-panel');
+    const passwordPanel = document.getElementById('account-panel');
     passwordPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     const firstInput = passwordPanel?.querySelector('input');
@@ -53,7 +53,7 @@ export default function Navbar({ user, onLogout, onOpenPasswordDialog }) {
 
         <button onClick={handlePasswordClick} className="btn btn-outline" type="button">
           <KeyRound size={16} />
-          Şifre
+          Hesap
         </button>
 
         <button onClick={onLogout} className="btn btn-primary" type="button">

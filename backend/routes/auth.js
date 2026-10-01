@@ -227,6 +227,57 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.get('/me', authenticate, async (req, res, next) => {
+  try {
+    const user = await getDb().prepare('SELECT id, email, role, full_name FROM users WHERE id = ?').get(req.user.id);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ user });
+  } catch (error) { next(error); }
+});
+
+router.post('/change-email', authenticate, async (req, res, next) => {
+  const { new_email, current_password } = req.body;
+  const email = typeof new_email === 'string' ? new_email.trim().toLowerCase() : '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Geçerli bir e-posta adresi girin.' });
+  }
+  if (typeof current_password !== 'string' || !current_password) {
+    return res.status(400).json({ error: 'E-posta değişikliği için mevcut şifrenizi girin.' });
+  }
+  try {
+    const db = getDb();
+    const user = await db.transaction(async () => {
+      const current = await db.prepare('SELECT id, email, role, full_name, password_hash FROM users WHERE id = ?').get(req.user.id);
+      if (!current || current.email !== req.user.email) {
+        const error = new Error('Hesap bilgileriniz değişti. Yeniden giriş yapın.');
+        error.status = 401;
+        throw error;
+      }
+      if (!bcrypt.compareSync(current_password, current.password_hash)) {
+        const error = new Error('Mevcut şifre doğrulanamadı.');
+        error.status = 401;
+        throw error;
+      }
+      if (email === current.email) {
+        const error = new Error('Yeni e-posta adresiniz mevcut adresinizden farklı olmalıdır.');
+        error.status = 400;
+        throw error;
+      }
+      await db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, current.id);
+      return { id: current.id, email, role: current.role, full_name: current.full_name };
+    })();
+    const token = jwt.sign(user, JWT_SECRET, { expiresIn: '24h' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ message: 'E-posta adresiniz güncellendi. Sonraki girişlerde yeni adresinizi kullanın.', user, token });
+  } catch (error) {
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Bu e-posta adresi başka bir hesapta kullanılıyor.' });
+    }
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
+
 // POST /api/auth/change-password
 router.post('/change-password', authenticate, async (req, res) => {
   try {

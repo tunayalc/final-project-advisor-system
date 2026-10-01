@@ -21,9 +21,12 @@ async function authenticate(req, res, next) {
         return res.status(401).json({ error: 'Geçersiz veya süresi dolmuş token.' });
     }
     try {
-        const user = await getDb().prepare('SELECT id, role FROM users WHERE id = ?').get(decoded.id);
+        const user = await getDb().prepare('SELECT id, role, email FROM users WHERE id = ?').get(decoded.id);
         if (!user || user.role !== decoded.role) {
             return res.status(401).json({ error: 'Hesap artık mevcut değil. Yeniden giriş yapın.' });
+        }
+        if (user.email !== decoded.email) {
+            return res.status(401).json({ error: 'E-posta adresiniz değişti. Yeni adresinizle yeniden giriş yapın.' });
         }
         req.user = decoded;
         next();

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Search, Send } from 'lucide-react';
 import api from '../api';
-import PasswordPanel from '../components/PasswordPanel';
+import AccountSettings from '../components/AccountSettings';
 
-export default function FacultyDashboard({ user }) {
+export default function FacultyDashboard({ user, onUserUpdated }) {
   const [profile, setProfile] = useState(null);
   const [assigned, setAssigned] = useState([]);
   const [searchGano, setSearchGano] = useState('3.0');
@@ -189,7 +189,7 @@ export default function FacultyDashboard({ user }) {
         </section>
       </div>
 
-      <PasswordPanel />
+      <AccountSettings user={user} onUserUpdated={onUserUpdated} />
     </div>
   );
 }

@@ -13,14 +13,18 @@ module.exports = async function seedPostgres(db) {
                 .run((process.env.ADMIN_EMAIL || 'admin@ankara.edu.tr').trim().toLowerCase(), bcrypt.hashSync(password, 12), 'admin', 'Sistem Yöneticisi');
         }
         for (const [email, fullName, departmentName, keywords] of CORE_FACULTY) {
-            let user = await db.prepare('SELECT id FROM users WHERE email = ? AND role = ?').get(email, 'hoca');
+            let user = await db.prepare('SELECT user_id AS id FROM faculty WHERE roster_key = ?').get(email)
+                || await db.prepare('SELECT id FROM users WHERE email = ? AND role = ?').get(email, 'hoca');
             if (!user) {
                 await db.prepare('INSERT OR IGNORE INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)')
                     .run(email, bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), 'hoca', fullName);
                 user = await db.prepare('SELECT id FROM users WHERE email = ? AND role = ?').get(email, 'hoca');
             }
             const department = await db.prepare('SELECT id FROM departments WHERE name = ?').get(departmentName);
-            if (user && department) await db.prepare('INSERT OR IGNORE INTO faculty (user_id, department_id, expertise_keywords) VALUES (?, ?, ?)').run(user.id, department.id, keywords);
+            if (user && department) {
+                await db.prepare('INSERT OR IGNORE INTO faculty (user_id, department_id, expertise_keywords) VALUES (?, ?, ?)').run(user.id, department.id, keywords);
+                await db.prepare('UPDATE faculty SET roster_key = ? WHERE user_id = ? AND roster_key IS NULL').run(email, user.id);
+            }
         }
     })();
 };

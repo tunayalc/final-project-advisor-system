@@ -230,6 +230,11 @@ button, input, select { font: inherit; }
 .transcript-notice h2 { margin: 0; font-size: 1.2rem; line-height: 1.4; color: var(--warning); }
 .transcript-notice p { margin: 12px 0 0; }
 .field-block small { color: var(--ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
+.account-email { overflow-wrap: anywhere; }
+.panel .account-password-title { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+#account-panel { scroll-margin-top: 110px; }
+#account-panel .section-header { justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+#account-panel .icon-chip { flex-shrink: 0; }
 
 .hero-banner h1, .panel h1, .panel h2, .panel h3, .login-brand h1 {
   margin: 0;
