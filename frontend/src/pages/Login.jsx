@@ -122,9 +122,10 @@ export default function Login({ onLogin }) {
             <TriangleAlert size={22} aria-hidden="true" />
             <h2 id="transcript-notice-title">Önemli: Güncel transkript ile kayıt olun</h2>
           </div>
-          <p>Kayıt olmadan önce e-Devlet transkriptinizdeki GANO’nun güncel ve doğru olduğunu kontrol edin. Sistemdeki ortalamanız, yüklediğiniz PDF’den alınır.</p>
-          <p>Ortalamanız hatalı veya eski görünüyorsa OBS’de <strong>Öğrenci &gt; İşlemler &gt; YÖKSİS e-Devlet Bilgi Güncelle</strong> bölümünden bilgilerinizi güncelleyin.</p>
-          <p>Bu işlemden sonra e-Devlet transkriptiniz en geç bir gün içinde güncellenir. <strong>Güncel ortalamanızı gördükten sonra yeni transkript PDF’ini indirip kayıt olun.</strong></p>
+          <p><strong>e-Devlet veya OBS / üniversite tarafından verilen transkript PDF’i ile kayıt olabilirsiniz.</strong> e-Devlet transkripti alamayan yabancı öğrenciler de OBS’den ya da üniversiteden aldıkları transkriptle kayıt olabilir.</p>
+          <p>Belgenizi nereden alırsanız alın, GANO’nun güncel ve doğru olduğunu kontrol edin. Sistemdeki ortalamanız, yüklediğiniz PDF’den alınır.</p>
+          <p><strong>e-Devlet’ten alınan transkriptler için:</strong> Ortalamanız hatalı veya eski görünüyorsa OBS’de <strong>Öğrenci &gt; İşlemler &gt; YÖKSİS e-Devlet Bilgi Güncelle</strong> bölümünden bilgilerinizi güncelleyin. Bu işlemden sonra e-Devlet transkriptiniz en geç bir gün içinde güncellenir.</p>
+          <p><strong>OBS / üniversite transkriptleri için:</strong> OBS’de görünen güncel ortalamanızı içeren transkript PDF’ini kullanın. <strong>Güncel ve doğru ortalamanızı gördükten sonra transkriptinizi indirip kayıt olun.</strong></p>
         </section>
       </section>
 
@@ -158,7 +159,7 @@ export default function Login({ onLogin }) {
         <p className="muted-copy">
           {mode === 'login'
             ? 'Kurumsal e-posta adresiniz ve şifreniz ile oturum açın.'
-            : 'Transkriptinizdeki ad soyad, GANO, üniversite ve bölüm okunur. Adınız form ile, üniversite ve bölüm bilgileriniz Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği ile eşleşirse hesabınız anında onaylanır.'}
+            : 'e-Devlet veya OBS / üniversite transkriptinizdeki ad soyad, GANO, üniversite ve bölüm okunur. Adınız form ile, üniversite ve bölüm bilgileriniz Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği ile eşleşirse hesabınız anında onaylanır.'}
         </p>
 
         {mode === 'login' ? (
@@ -294,7 +295,7 @@ export default function Login({ onLogin }) {
                   />
                 </div>
               </label>
-              <small id="transcript-help">GANO’nuzun doğru göründüğü güncel e-Devlet transkriptini yükleyin. PDF metni seçilebilir ve şifresiz olmalıdır (en fazla 5 MB). Dört bilgiden biri okunamazsa veya eşleşmezse kayıt oluşturulmaz.</small>
+              <small id="transcript-help">GANO’nuzun doğru göründüğü güncel e-Devlet veya OBS / üniversite transkriptini yükleyin. e-Devlet belgesi zorunlu değildir. PDF metni seçilebilir ve şifresiz olmalıdır (en fazla 5 MB). Dört bilgiden biri okunamazsa veya eşleşmezse kayıt oluşturulmaz.</small>
 
               <button type="submit" className="btn btn-primary btn-wide" disabled={registerLoading}>
                 <UserPlus size={16} />

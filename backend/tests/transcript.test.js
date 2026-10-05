@@ -1,8 +1,47 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { extractTranscriptText, TranscriptError } = require('../services/transcript');
 
 const document = 'ANKARA ÜNİVERSİTESİ\nAdı Soyadı: Çağrı Öztürk\nBölüm: Yapay Zekâ ve Veri Mühendisliği\nGABNO: 3,42';
+const obsDocument = fs.readFileSync(path.join(__dirname, 'fixtures/obs-transcript.txt'), 'utf8');
+
+test('reads OBS column identity and final cumulative average across repeated page headers', () => {
+    assert.deepEqual(extractTranscriptText(obsDocument, 'Mariam El Amrani'), {
+        transcriptFullName: 'MARIAM EL AMRANI', gano: 3.44,
+        transcriptUniversity: 'Ankara Üniversitesi', transcriptDepartment: 'Yapay Zeka ve Veri Mühendisliği',
+    });
+});
+
+test('OBS registration does not depend on a Turkish citizenship number', () => {
+    for (const text of [
+        obsDocument.replaceAll('00000000000\n', ''),
+        obsDocument.replaceAll('T.C. Kimlik No\n', '').replaceAll('00000000000\n', ''),
+        obsDocument.replaceAll('T.C. Kimlik No', 'Y.U. Kimlik No').replaceAll('00000000000', 'FOREIGN-PASSPORT'),
+    ]) assert.equal(extractTranscriptText(text, 'Mariam El Amrani').gano, 3.44);
+});
+
+test('OBS still rejects mismatched identity, department, university and missing cumulative average', () => {
+    assert.throws(() => extractTranscriptText(obsDocument, 'Baska Ogrenci'), TranscriptError);
+    for (const text of [
+        obsDocument.replace('MARIAM\tAdi', 'BASKA\tAdi'),
+        obsDocument.replace('EL AMRANI', 'BASKA SOYAD'),
+        obsDocument.replaceAll('Yapay Zeka Ve Veri Muhendisligi', 'Bilgisayar Muhendisligi'),
+        obsDocument.replaceAll('ANKARA UNIVERSITESI', 'GAZI UNIVERSITESI'),
+        obsDocument.replace('ANKARA UNIVERSITESI', 'GAZI UNIVERSITESI'),
+        obsDocument.replaceAll('GABNO', 'YABNO'),
+        obsDocument.replaceAll('Fakulte\n', ''),
+    ]) assert.throws(() => extractTranscriptText(text, 'Mariam El Amrani'), TranscriptError);
+});
+
+test('reads Turkish OBS labels and multi-part names', () => {
+    const text = obsDocument.replaceAll('Soyadi', 'Soyadı').replaceAll('Adi', 'Adı')
+        .replaceAll('Ogrenci No', 'Öğrenci No').replaceAll('Fakulte\n', 'Fakülte\n')
+        .replaceAll('Bolum/Program', 'Bölüm/Program').replaceAll('Sinif / Yariyil / Donem', 'Sınıf / Yarıyıl / Dönem')
+        .replaceAll('Kayit Tarihi', 'Kayıt Tarihi').replaceAll('EL AMRANI', 'ÖZTÜRK').replaceAll('MARIAM', 'DENİZ EGE');
+    assert.equal(extractTranscriptText(text, 'Deniz Ege Öztürk').transcriptFullName, 'DENİZ EGE ÖZTÜRK');
+});
 test('reads YOK column layout and prioritizes the overall average', () => {
     const text = `Öğrenci No
 T.C. Kimlik No

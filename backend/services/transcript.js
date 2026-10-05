@@ -30,6 +30,31 @@ function uniqueValue(values, normalize, error) {
     return values[0];
 }
 
+function normalizeObsLayout(lines) {
+    const normalized = [];
+    for (let index = 0; index < lines.length; index++) {
+        // OBS emits the identity column's labels before its values. Match the
+        // complete labelled block; citizenship/identity numbers are not required.
+        if (fold(lines[index]) === 'OGRENCI NO') {
+            let cursor = index + 1;
+            if (/^(?:T\.?\s*C\.?|Y\.?\s*U\.?) KIMLIK NO$/.test(fold(lines[cursor]))) cursor++;
+            const labels = ['SOYADI', 'FAKULTE', 'BOLUM/PROGRAM', 'SINIF/YARIYIL/DONEM'];
+            if (labels.every((label, offset) => fold(lines[cursor + offset]).replace(/\s*\/\s*/g, '/') === label)) {
+                const start = cursor + labels.length;
+                const end = [start + 5, start + 6].find(position => /^KAYIT TARIHI(?:\s|:)/.test(fold(lines[position])));
+                if (end && /^\d+\s*\/\s*\d+\s*\/\s*\d+$/.test(lines[end - 1])) {
+                    normalized.push(`Soyadı: ${lines[end - 4]}`, `Bölüm: ${lines[end - 2]}`);
+                    index = end - 1;
+                    continue;
+                }
+            }
+        }
+        // The given-name row is emitted as value<TAB>label in OBS PDFs.
+        normalized.push(lines[index].replace(/^(.+?)\s+(?:Adı|Adi)$/iu, 'Adı: $1'));
+    }
+    return normalized;
+}
+
 function extractTranscriptText(text, submittedName) {
     // YÖK's PDF stores the four identity labels first, followed by their column values.
     // Match that exact layout instead of guessing an uppercase line as the student's name.
@@ -38,7 +63,7 @@ function extractTranscriptText(text, submittedName) {
         'Adı: $1'
     ).replace(/^\(Surname\)\s*:\s*Soyadı\s+(.+)$/gm, 'Soyadı: $1')
         .replace(/^Programı\/ABD\/ASD\s*:/gm, 'Bölüm:');
-    const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const lines = normalizeObsLayout(String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean));
     let names = labelledValues(lines, 'ADI\\s+SOYADI|AD\\s+SOYAD[I]?|OGRENCI\\s+ADI\\s+SOYADI|NAME\\s+SURNAME|STUDENT\\s+NAME');
     if (!names.length) {
         const given = labelledValues(lines, 'ADI|AD|GIVEN\\s+NAME|NAME');
@@ -62,9 +87,11 @@ function extractTranscriptText(text, submittedName) {
         /^(?:UNIVERSITE(?:SI)?|UNIVERSITY)$/.test(fold(line)) ||
         /^(?:UNIVERSITE(?:SI)?|UNIVERSITY)$/.test(fold(lines[index - 1]))
     ), 'UNIVERSITE(?:SI)?|UNIVERSITY');
-    const universityHeaders = lines.filter(line => /^(?:T\.?\s*C\.?\s*)?ANKARA (?:UNIVERSITESI|UNIVERSITY)(?:\s*\(ANKARA UNIVERSITY\))?(?:\s+(?:TRANSKRIPT(?: BELGESI)?|TRANSCRIPT))?$/i.test(fold(line)));
+    const acceptedUniversity = /^(?:(?:T\.?\s*C\.?|TURKIYE CUMHURIYETI)\s*)?ANKARA (?:UNIVERSITESI|UNIVERSITY)(?:\s*\(ANKARA UNIVERSITY\))?(?:\s+(?:TRANSKRIPT(?: BELGESI)?|TRANSCRIPT))?$/;
+    const universityHeaders = lines.filter(line => acceptedUniversity.test(fold(line))
+        || /^TURKIYE CUMHURIYETI .+ UNIVERSITESI$/.test(fold(line)));
     const universities = [...universityValues, ...universityHeaders];
-    if (!universities.length || universities.some(value => !/^(?:T\.?\s*C\.?\s*)?ANKARA (?:UNIVERSITESI|UNIVERSITY)(?:\s*\(ANKARA UNIVERSITY\))?(?:\s+(?:TRANSKRIPT(?: BELGESI)?|TRANSCRIPT))?$/.test(fold(value)))) {
+    if (!universities.length || universities.some(value => !acceptedUniversity.test(fold(value)))) {
         throw new TranscriptError('Üniversite bilgisi okunamadı veya Ankara Üniversitesi ile eşleşmiyor.');
     }
 

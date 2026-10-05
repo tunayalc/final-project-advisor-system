@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { Buffer } from 'node:buffer';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 for (const status of ['accepted', 'rejected']) {
   test(`invitation ${status} is archived once and duplicate responses are rejected`, async ({ request }) => {
@@ -169,27 +169,37 @@ function escapePdfText(value) {
 }
 
 function makeTranscriptPdf({ fullName, label = 'GABNO', gano = '3,42', university = 'Ankara Universitesi', department = 'Yapay Zeka ve Veri Muhendisligi' }) {
-  const textOps = ['BT', '/F1 12 Tf', '72 760 Td'];
-  [
+  return makeTextPdf([[
     university,
     department ? `Bolum: ${department}` : '',
     `Ad Soyad: ${fullName}`,
     `${label}: ${gano}`,
     'Belge sonu',
-  ].forEach((line) => {
-    textOps.push(`(${escapePdfText(line)}) Tj`);
-    textOps.push('0 -18 Td');
-  });
-  textOps.push('ET');
+  ]]);
+}
 
-  const stream = textOps.join('\n');
+const obsTranscriptText = readFileSync(new URL('../../backend/tests/fixtures/obs-transcript.txt', import.meta.url), 'utf8');
+
+function makeObsTranscriptPdf(text = obsTranscriptText) {
+  return makeTextPdf(text.split(/^-- \d of 4 --$/m).map(page => page.trim()).filter(Boolean)
+    .map(page => page.replaceAll('\t', '  ').split('\n')));
+}
+
+function makeTextPdf(pages) {
+  const pageIds = pages.map((_, index) => 4 + index * 2);
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`,
   ];
+  pages.forEach((lines, index) => {
+    const textOps = ['BT', '/F1 12 Tf', '72 760 Td'];
+    lines.forEach(line => { textOps.push(`(${escapePdfText(line)}) Tj`, '0 -18 Td'); });
+    textOps.push('ET');
+    const stream = textOps.join('\n');
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${pageIds[index] + 1} 0 R >>`,
+      `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`);
+  });
 
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
@@ -278,7 +288,13 @@ test('home page explains scoring and only offers the enabled department', async 
   await expect(page.getByRole('heading', { name: 'Danışman tercihi nasıl yapılır?' })).toBeVisible();
   await expect(page.locator('.assignment-guide')).toContainText('84');
   await expect(page.locator('.assignment-guide')).toContainText('GANO puanı × 0,80 + tercih puanı × 0,20');
+  const notice = page.getByRole('region', { name: 'Önemli: Güncel transkript ile kayıt olun' });
+  await expect(notice).toContainText('e-Devlet veya OBS / üniversite');
+  await expect(notice).toContainText('yabancı öğrenciler');
+  await expect(notice).toContainText('e-Devlet’ten alınan transkriptler için:');
+  await expect(notice).toContainText('OBS / üniversite transkriptleri için:');
   await page.getByRole('button', { name: 'Öğrenci Kaydı' }).click();
+  await expect(page.locator('#transcript-help')).toContainText('e-Devlet belgesi zorunlu değildir');
   await expect(page.getByLabel('Bölüm').locator('option')).toHaveCount(1);
   const departments = await request.get(`${apiBaseUrl}/auth/departments`);
   expect((await departments.json()).map(item => item.name)).toEqual(['Yapay Zeka ve Veri Mühendisliği']);
@@ -287,6 +303,50 @@ test('home page explains scoring and only offers the enabled department', async 
     headers: { Authorization: `Bearer ${token}` }, data: { name: 'Bilgisayar Mühendisliği' },
   });
   expect(blocked.status()).toBe(403);
+});
+
+test('foreign student registers with a four-page OBS PDF without a citizenship number', async ({ page, request }) => {
+  const email = `obs.foreign.${Date.now()}@example.invalid`;
+  const pdf = makeObsTranscriptPdf(obsTranscriptText.replaceAll('00000000000\n', ''));
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Öğrenci Kaydı' }).click();
+  await page.getByLabel('Ad soyad').fill('Mariam El Amrani');
+  await page.getByLabel('E-posta adresi').fill(email);
+  await page.getByLabel('Şifre').fill(studentPassword);
+  await page.getByLabel('Giriş yılı').fill('2022');
+  await page.getByLabel('Transkript PDF').setInputFiles({ name: 'obs-transkript.pdf', mimeType: 'application/pdf', buffer: pdf });
+  const registrationResponse = page.waitForResponse(response => response.url().endsWith('/auth/register') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Öğrenci kaydı oluştur' }).click();
+  const response = await registrationResponse;
+  expect(response.status()).toBe(201);
+  const registration = await response.json();
+  expect(registration.user.profile).toMatchObject({ gano: 3.44, approval_status: 'approved', transcript_full_name: 'MARIAM EL AMRANI' });
+  await expect(page).toHaveURL(/\/student$/);
+  const panel = page.getByRole('region', { name: 'Transkriptten okunan bilgiler' });
+  for (const value of ['MARIAM EL AMRANI', '3.44', 'Ankara Üniversitesi', 'Yapay Zeka ve Veri Mühendisliği']) await expect(panel).toContainText(value);
+  const admin = await getAdminToken(request);
+  const profile = await (await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${registration.token}` } })).json();
+  const download = await request.get(`${apiBaseUrl}/admin/students/${profile.id}/transcript`, { headers: { Authorization: `Bearer ${admin}` } });
+  expect(download.status()).toBe(200);
+  expect(await download.body()).toEqual(pdf);
+  await saveFirstPreferences(request, registration.token, 2);
+  await page.reload();
+  await expect(panel).toContainText('3.44');
+  mkdirSync('../output/playwright/obs-transcript-support', { recursive: true });
+  await page.screenshot({ path: '../output/playwright/obs-transcript-support/mock-obs-kaydi.png' });
+});
+
+test('OBS PDF registration rejects wrong identity, institution, department and invalid average without creating an account', async ({ request }) => {
+  const data = { full_name: 'Mariam El Amrani', email: `obs.invalid.${Date.now()}@example.invalid`, password: studentPassword, department_id: '1', entry_year: '2022' };
+  const submit = text => request.post(`${apiBaseUrl}/auth/register`, { multipart: { ...data, transcript: { name: 'obs.pdf', mimeType: 'application/pdf', buffer: makeObsTranscriptPdf(text) } } });
+  for (const text of [
+    obsTranscriptText.replaceAll('MARIAM', 'BASKA'),
+    obsTranscriptText.replaceAll('ANKARA UNIVERSITESI', 'GAZI UNIVERSITESI'),
+    obsTranscriptText.replace('ANKARA UNIVERSITESI', 'GAZI UNIVERSITESI'),
+    obsTranscriptText.replaceAll('Yapay Zeka Ve Veri Muhendisligi', 'Bilgisayar Muhendisligi'),
+    obsTranscriptText.replace('GABNO : 3.44 Toplam', 'GABNO : 4.50 Toplam'),
+  ]) expect((await submit(text)).status()).toBe(422);
+  expect((await submit(obsTranscriptText)).status()).toBe(201);
 });
 
 const invalidTranscripts = [

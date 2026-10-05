@@ -39,7 +39,9 @@ API: `GET /api/auth/me`, `POST /api/auth/change-email` (`new_email`, `current_pa
 
 ## Öğrenci kaydı
 
-Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş yılı ve PDF transkript gönderilir. Tek bölüm Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği'dir.
+Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş yılı ve PDF transkript gönderilir. e-Devlet ve OBS / üniversite tarafından verilen transkript PDF’leri kabul edilir. e-Devlet belgesi alamayan yabancı öğrenciler de OBS / üniversite belgesiyle kayıt olabilir; T.C. kimlik numarası kayıt doğrulamasının koşulu değildir. Tek bölüm Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği'dir.
+
+OBS’nin sütunlu ad/soyad ve bölüm düzeni desteklenir; sayfalarda yinelenen kimlik bilgilerinin tutarlılığı kontrol edilir. Dönem ortalaması (YABNO) yerine belgedeki son kümülatif GABNO/GANO kullanılır. Ana sayfa, YÖKSİS e-Devlet Bilgi Güncelle işlemini ve bir günlük güncellenme süresini yalnızca e-Devlet belgeleri için açıklar. Her iki belge kaynağında da güncel ve doğru ortalamanın kontrol edilmesi istenir.
 
 Transkriptten dört alan okunur: ad soyad, GANO/GABNO (0–4), üniversite ve bölüm. Ad formdaki adla, üniversite Ankara Üniversitesi ile ve bölüm Yapay Zeka ve Veri Mühendisliği ile eşleşmelidir. Dört kontrol geçerse kullanıcı ve öğrenci kaydı tek işlemle oluşturulur, şifre bcrypt ile hashlenir ve hesap doğrudan `approved` olur. Öğrenci yönetici onayı beklemeden tercih yapabilir. Okunan dört alan ve kontrol zamanı veritabanında tutulur, öğrenci panelinde gösterilir.
 
