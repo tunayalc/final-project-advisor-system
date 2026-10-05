@@ -6,6 +6,30 @@ const { extractTranscriptText, TranscriptError } = require('../services/transcri
 
 const document = 'ANKARA ÜNİVERSİTESİ\nAdı Soyadı: Çağrı Öztürk\nBölüm: Yapay Zekâ ve Veri Mühendisliği\nGABNO: 3,42';
 const obsDocument = fs.readFileSync(path.join(__dirname, 'fixtures/obs-transcript.txt'), 'utf8');
+const yokInitials = fs.readFileSync(path.join(__dirname, 'fixtures/yok-initials.txt'), 'utf8');
+
+test('YOK dotted initials survive column extraction and match equivalent spacing', () => {
+    for (const name of ['Mariam A.K. El Amrani', 'Mariam A. K. El Amrani', 'Mariam A K El Amrani']) {
+        assert.deepEqual(extractTranscriptText(yokInitials, name), {
+            transcriptFullName: 'MARIAM A.K. EL AMRANI', gano: 2.95,
+            transcriptUniversity: 'Ankara Üniversitesi', transcriptDepartment: 'Yapay Zeka ve Veri Mühendisliği',
+        });
+    }
+    assert.throws(() => extractTranscriptText(yokInitials, 'Mariam B.K. El Amrani'), TranscriptError);
+});
+
+test('YOK column parsing does not require an identity number and rejects incomplete identity blocks', () => {
+    for (const text of [yokInitials.replaceAll('00000000000\n', ''), yokInitials.replaceAll('T.C. Kimlik No\n', '').replaceAll('00000000000\n', '')]) {
+        assert.equal(extractTranscriptText(text, 'Mariam A.K. El Amrani').gano, 2.95);
+    }
+    assert.throws(() => extractTranscriptText(yokInitials.replaceAll('01/02/2006\n', ''), 'Mariam A.K. El Amrani'), TranscriptError);
+});
+
+test('initial support does not accept arbitrary punctuation or numeric names', () => {
+    for (const name of ['Mariam ... El Amrani', 'Mariam A..K. El Amrani', 'Mariam A1 El Amrani', 'Mariam @K El Amrani']) {
+        assert.throws(() => extractTranscriptText(document.replace('Çağrı Öztürk', name), name), TranscriptError);
+    }
+});
 
 test('reads OBS column identity and final cumulative average across repeated page headers', () => {
     assert.deepEqual(extractTranscriptText(obsDocument, 'Mariam El Amrani'), {

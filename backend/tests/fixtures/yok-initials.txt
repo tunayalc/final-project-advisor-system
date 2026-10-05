@@ -1,0 +1,72 @@
+Ogrenci No
+T.C. Kimlik No
+Adi
+Dogum Tarihi
+12345000
+00000000000
+MARIAM A.K.
+01/02/2006
+:
+:
+:
+:
+(Student ID)
+(TR Identity No)
+(Given Name)
+(Date of Birth)
+(Surname) : Soyadi EL AMRANI
+ANKARA UNIVERSITESI
+NOT DOKUM BELGESI
+(ANKARA UNIVERSITY)
+(TRANSCRIPT)
+Programi/ABD/ASD :Yapay Zeka Ve Veri Muhendisligi Pr.
+2.95 :
+Genel Not Ortalamasi
+(Cumulative GPA)
+DNO:
+(GPA)
+3.08 GNO:
+(CGPA)
+3.08
+-- 1 of 4 --
+Ogrenci No
+T.C. Kimlik No
+Adi
+Dogum Tarihi
+12345000
+00000000000
+MARIAM A.K.
+01/02/2006
+(Surname) : Soyadi EL AMRANI
+ANKARA UNIVERSITESI
+DNO:
+(GPA)
+2.5 GNO:
+(CGPA)
+2.95
+-- 2 of 4 --
+Ogrenci No
+T.C. Kimlik No
+Adi
+Dogum Tarihi
+12345000
+00000000000
+MARIAM A.K.
+01/02/2006
+(Surname) : Soyadi EL AMRANI
+ANKARA UNIVERSITESI
+Students must have a CGPA of not less than 2.00 out of 4.00.
+-- 3 of 4 --
+Ogrenci No
+T.C. Kimlik No
+Adi
+Dogum Tarihi
+12345000
+00000000000
+MARIAM A.K.
+01/02/2006
+(Surname) : Soyadi EL AMRANI
+ANKARA UNIVERSITESI
+GNO: Genel Not Ortalamasi
+(Cumulative Grade Point Average)
+-- 4 of 4 --

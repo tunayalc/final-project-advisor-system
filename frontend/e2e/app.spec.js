@@ -179,6 +179,7 @@ function makeTranscriptPdf({ fullName, label = 'GABNO', gano = '3,42', universit
 }
 
 const obsTranscriptText = readFileSync(new URL('../../backend/tests/fixtures/obs-transcript.txt', import.meta.url), 'utf8');
+const yokInitialsText = readFileSync(new URL('../../backend/tests/fixtures/yok-initials.txt', import.meta.url), 'utf8');
 
 function makeObsTranscriptPdf(text = obsTranscriptText) {
   return makeTextPdf(text.split(/^-- \d of 4 --$/m).map(page => page.trim()).filter(Boolean)
@@ -347,6 +348,41 @@ test('OBS PDF registration rejects wrong identity, institution, department and i
     obsTranscriptText.replace('GABNO : 3.44 Toplam', 'GABNO : 4.50 Toplam'),
   ]) expect((await submit(text)).status()).toBe(422);
   expect((await submit(obsTranscriptText)).status()).toBe(201);
+});
+
+test('student with dotted initials registers through the YOK PDF form and retains the original name', async ({ page, request }) => {
+  const email = `yok.initials.${Date.now()}@example.invalid`;
+  const pdf = makeObsTranscriptPdf(yokInitialsText);
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Öğrenci Kaydı' }).click();
+  await page.getByLabel('Ad soyad').fill('Mariam A K El Amrani');
+  await page.getByLabel('E-posta adresi').fill(email);
+  await page.getByLabel('Şifre').fill(studentPassword);
+  await page.getByLabel('Giriş yılı').fill('2023');
+  await page.getByLabel('Transkript PDF').setInputFiles({ name: 'yok-initials.pdf', mimeType: 'application/pdf', buffer: pdf });
+  const responsePromise = page.waitForResponse(response => response.url().endsWith('/auth/register') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Öğrenci kaydı oluştur' }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(201);
+  const registration = await response.json();
+  expect(registration.user.full_name).toBe('MARIAM A.K. EL AMRANI');
+  expect(registration.user.profile.gano).toBe(2.95);
+  const panel = page.getByRole('region', { name: 'Transkriptten okunan bilgiler' });
+  await expect(panel).toContainText('MARIAM A.K. EL AMRANI');
+  await expect(panel).toContainText('2.95');
+  await saveFirstPreferences(request, registration.token, 2);
+  await page.reload();
+  await expect(panel).toContainText('MARIAM A.K. EL AMRANI');
+  await panel.scrollIntoViewIfNeeded();
+  mkdirSync('../output/playwright/initials-transcript-fix', { recursive: true });
+  await page.screenshot({ path: '../output/playwright/initials-transcript-fix/mock-noktali-isim-kayit.png' });
+});
+
+test('YOK initials cannot bypass mismatched names or accept arbitrary punctuation', async ({ request }) => {
+  const data = { full_name: 'Mariam A.K. El Amrani', email: `yok.invalid.${Date.now()}@example.invalid`, password: studentPassword, department_id: '1', entry_year: '2023' };
+  const submit = text => request.post(`${apiBaseUrl}/auth/register`, { multipart: { ...data, transcript: { name: 'yok.pdf', mimeType: 'application/pdf', buffer: makeObsTranscriptPdf(text) } } });
+  for (const initials of ['B.K.', 'A..K.', 'A1']) expect((await submit(yokInitialsText.replaceAll('A.K.', initials))).status()).toBe(422);
+  expect((await submit(yokInitialsText)).status()).toBe(201);
 });
 
 const invalidTranscripts = [

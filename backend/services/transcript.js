@@ -11,7 +11,14 @@ function fold(value) {
 }
 
 function normalizeName(value) {
-    return fold(value).replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
+    return fold(value).replace(/[’']/g, "'")
+        .replace(/([\p{L}])\.(?=[\p{L}]|\s|$)/gu, '$1 ')
+        .replace(/\s+/g, ' ').trim();
+}
+
+function validName(value) {
+    const parts = String(value || '').trim().split(/\s+/);
+    return parts.length >= 2 && parts.every(part => /^(?:[\p{L}]+(?:['’-][\p{L}]+)*|(?:[\p{L}]\.)+[\p{L}]?)$/u.test(part));
 }
 
 // Only explicitly labelled values are accepted; unrelated uppercase text is never guessed as a name.
@@ -30,7 +37,7 @@ function uniqueValue(values, normalize, error) {
     return values[0];
 }
 
-function normalizeObsLayout(lines) {
+function normalizeIdentityLayout(lines) {
     const normalized = [];
     for (let index = 0; index < lines.length; index++) {
         // OBS emits the identity column's labels before its values. Match the
@@ -38,6 +45,16 @@ function normalizeObsLayout(lines) {
         if (fold(lines[index]) === 'OGRENCI NO') {
             let cursor = index + 1;
             if (/^(?:T\.?\s*C\.?|Y\.?\s*U\.?) KIMLIK NO$/.test(fold(lines[cursor]))) cursor++;
+            // YÖK uses a different column block. A given name may include dotted
+            // initials, and an identity number may be absent for foreign students.
+            if (fold(lines[cursor]) === 'ADI' && fold(lines[cursor + 1]) === 'DOGUM TARIHI') {
+                const start = cursor + 2;
+                const end = [start + 2, start + 3].find(position => /^\d{2}\/\d{2}\/\d{4}$/.test(lines[position] || ''));
+                if (!end) throw new TranscriptError('Transkriptte ad soyad alanı net okunamadı.');
+                normalized.push(`Adı: ${lines[end - 1]}`);
+                index = end;
+                continue;
+            }
             const labels = ['SOYADI', 'FAKULTE', 'BOLUM/PROGRAM', 'SINIF/YARIYIL/DONEM'];
             if (labels.every((label, offset) => fold(lines[cursor + offset]).replace(/\s*\/\s*/g, '/') === label)) {
                 const start = cursor + labels.length;
@@ -56,14 +73,10 @@ function normalizeObsLayout(lines) {
 }
 
 function extractTranscriptText(text, submittedName) {
-    // YÖK's PDF stores the four identity labels first, followed by their column values.
-    // Match that exact layout instead of guessing an uppercase line as the student's name.
-    text = String(text || '').replace(
-        /Öğrenci No\s+T\.C\. Kimlik No\s+Adı\s+Doğum Tarihi\s+\d+\s+\d{11}\s+([\p{L} '\u2019-]+)\s+\d{2}\/\d{2}\/\d{4}/gu,
-        'Adı: $1'
-    ).replace(/^\(Surname\)\s*:\s*Soyadı\s+(.+)$/gm, 'Soyadı: $1')
-        .replace(/^Programı\/ABD\/ASD\s*:/gm, 'Bölüm:');
-    const lines = normalizeObsLayout(String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean));
+    // Normalize only labelled identity layouts; do not guess uppercase lines as names.
+    text = String(text || '').replace(/^\(Surname\)\s*:\s*Soyad[ıi]\s+(.+)$/gmu, 'Soyadı: $1')
+        .replace(/^Program[ıi]\/ABD\/ASD\s*:/gmu, 'Bölüm:');
+    const lines = normalizeIdentityLayout(String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean));
     let names = labelledValues(lines, 'ADI\\s+SOYADI|AD\\s+SOYAD[I]?|OGRENCI\\s+ADI\\s+SOYADI|NAME\\s+SURNAME|STUDENT\\s+NAME');
     if (!names.length) {
         const given = labelledValues(lines, 'ADI|AD|GIVEN\\s+NAME|NAME');
@@ -75,7 +88,7 @@ function extractTranscriptText(text, submittedName) {
         }
     }
     const transcriptFullName = uniqueValue(names, normalizeName, 'Transkriptte ad soyad okunamadı veya tutarsız.');
-    if (!/^[\p{L}]+(?:[ '\u2019-][\p{L}]+)+$/u.test(transcriptFullName)) {
+    if (!validName(transcriptFullName)) {
         throw new TranscriptError('Transkriptte ad soyad alanı net okunamadı.');
     }
     if (normalizeName(transcriptFullName) !== normalizeName(submittedName)) {
