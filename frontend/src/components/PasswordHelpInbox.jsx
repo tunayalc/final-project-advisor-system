@@ -52,7 +52,7 @@ export default function PasswordHelpInbox() {
   };
 
   return (
-    <section className="panel" aria-labelledby="password-help-inbox-title">
+    <section className="panel password-help-inbox" aria-labelledby="password-help-inbox-title">
       <div className="section-header">
         <div>
           <p className="eyebrow">Hesap Bildirimleri</p>

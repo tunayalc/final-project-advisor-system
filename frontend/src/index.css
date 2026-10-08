@@ -235,6 +235,8 @@ button, input, select { font: inherit; }
 #account-panel { scroll-margin-top: 110px; }
 #account-panel .section-header { justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 #account-panel .icon-chip { flex-shrink: 0; }
+.password-help-inbox .section-header { justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.password-help-inbox .icon-chip { flex-shrink: 0; }
 
 .hero-banner h1, .panel h1, .panel h2, .panel h3, .login-brand h1 {
   margin: 0;
