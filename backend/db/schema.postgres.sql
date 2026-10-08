@@ -26,6 +26,15 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS password_help_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'reviewed')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS password_help_pending_user ON password_help_requests(user_id) WHERE status = 'pending';
+
 CREATE TABLE IF NOT EXISTS faculty (
     id SERIAL PRIMARY KEY,
     roster_key TEXT UNIQUE,
@@ -123,7 +132,7 @@ DO $$
 DECLARE
     audited_table TEXT;
 BEGIN
-    FOREACH audited_table IN ARRAY ARRAY['departments', 'users', 'students', 'faculty', 'preferences', 'pre_assignments', 'assignment_logs', 'student_transcripts'] LOOP
+    FOREACH audited_table IN ARRAY ARRAY['departments', 'users', 'students', 'faculty', 'preferences', 'pre_assignments', 'assignment_logs', 'student_transcripts', 'password_help_requests'] LOOP
         IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'audit_' || audited_table
                        AND tgrelid = ('advisor.' || audited_table)::regclass) THEN
             EXECUTE format('CREATE TRIGGER %I AFTER INSERT OR UPDATE OR DELETE ON advisor.%I FOR EACH ROW EXECUTE FUNCTION advisor.record_system_event()',

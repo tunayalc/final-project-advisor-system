@@ -1,4 +1,4 @@
-const AUDITED_TABLES = ['departments', 'users', 'students', 'faculty', 'preferences', 'pre_assignments', 'assignment_logs', 'student_transcripts'];
+const AUDITED_TABLES = ['departments', 'users', 'students', 'faculty', 'preferences', 'pre_assignments', 'assignment_logs', 'student_transcripts', 'password_help_requests'];
 
 function initializeSqliteAudit(db) {
   for (const table of AUDITED_TABLES) {

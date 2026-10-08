@@ -2,8 +2,30 @@ const express = require('express');
 const { getDb } = require('../db/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { archiveSelection, mirrorSelection } = require('../services/selection-backups');
+const { parseEntryYear } = require('../services/entry-year');
 
 const router = express.Router();
+
+router.patch('/me', authenticate, authorize('ogrenci'), async (req, res, next) => {
+  const entryYear = parseEntryYear(req.body?.entry_year);
+  if (entryYear === null) return res.status(400).json({ error: '2000 ile bu yıl arasında geçerli bir giriş yılı girin.' });
+  try {
+    const db = getDb();
+    const student = await db.transaction(async () => {
+      const current = await db.prepare('SELECT id, entry_year FROM students WHERE user_id = ?').get(req.user.id);
+      if (!current) return null;
+      if (current.entry_year !== entryYear) {
+        await db.prepare('UPDATE students SET entry_year = ? WHERE id = ?').run(entryYear, current.id);
+        await db.prepare('INSERT INTO assignment_logs (student_id, action, details) VALUES (?, ?, ?)')
+          .run(current.id, 'UPDATE_ENTRY_YEAR', `Giriş yılı güncellendi: ${current.entry_year} → ${entryYear}`);
+      }
+      return { entry_year: entryYear };
+    })();
+    if (!student) return res.status(404).json({ error: 'Öğrenci profili bulunamadı.' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ message: 'Giriş yılınız güncellendi.', ...student });
+  } catch (error) { next(error); }
+});
 
 function assertApprovedStudent(student) {
   if (student.approval_status !== 'approved') {

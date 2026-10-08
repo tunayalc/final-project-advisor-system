@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { DEPARTMENT, TranscriptError, extractTranscriptInfo } = require('../services/transcript');
 const { getDb } = require('../db/database');
 const { authenticate, JWT_SECRET } = require('../middleware/auth');
+const { parseEntryYear } = require('../services/entry-year');
 
 const router = express.Router();
 
@@ -51,7 +52,7 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
     const db = getDb();
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const normalizedName = String(full_name || '').trim();
-    const parsedEntryYear = Number(entry_year);
+    const parsedEntryYear = parseEntryYear(entry_year);
     const departmentId = Number(department_id);
 
     if (!normalizedEmail || !password || !normalizedName || !entry_year || !department_id) {
@@ -70,7 +71,7 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
       return res.status(400).json({ error: 'Geçerli bir bölüm seçin.' });
     }
 
-    if (!Number.isInteger(parsedEntryYear) || parsedEntryYear < 2000 || parsedEntryYear > 2100) {
+    if (parsedEntryYear === null) {
       return res.status(400).json({ error: 'Geçerli bir giriş yılı girin.' });
     }
 
@@ -170,6 +171,23 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Sunucu hatası.' });
   }
+});
+
+// A help request notifies administrators; it never changes an authentication credential.
+router.post('/password-help', async (req, res, next) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Geçerli bir kayıtlı e-posta adresi girin.' });
+  }
+  try {
+    const db = getDb();
+    await db.transaction(async () => {
+      const user = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      if (user) await db.prepare('INSERT OR IGNORE INTO password_help_requests (user_id) VALUES (?)').run(user.id);
+    })();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ message: 'Bu e-posta sistemde kayıtlıysa şifre yardım talebiniz yöneticiye iletildi.' });
+  } catch (error) { next(error); }
 });
 
 // POST /api/auth/login

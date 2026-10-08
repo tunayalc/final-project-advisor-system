@@ -13,6 +13,7 @@ const TABLES = {
   pre_assignments: '*',
   assignment_logs: '*',
   selection_backups: '*',
+  password_help_requests: '*',
   system_events: '*',
 };
 

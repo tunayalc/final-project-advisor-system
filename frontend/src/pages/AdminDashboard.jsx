@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Calculator, Check, Download, Play, RefreshCcw, ShieldCheck, Trash2, UserCog, UserPlus, Users, X } from 'lucide-react';
 import api from '../api';
 import AccountSettings from '../components/AccountSettings';
+import PasswordHelpInbox from '../components/PasswordHelpInbox';
 
 const ROLE_LABELS = {
   admin: 'Yönetici',
@@ -372,6 +373,8 @@ export default function AdminDashboard({ user, onUserUpdated }) {
 
       {notice.text && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
 
+      <PasswordHelpInbox />
+
       {stats && (
         <section className="stat-grid">
           <article className="stat-card">
@@ -579,7 +582,7 @@ export default function AdminDashboard({ user, onUserUpdated }) {
                         <input
                           type="number"
                           min="2000"
-                          max="2100"
+                          max={new Date().getFullYear()}
                           className="app-input table-input"
                           value={edit.entry_year || ''}
                           onChange={(event) => updateApplicationEdit(application.id, 'entry_year', event.target.value)}

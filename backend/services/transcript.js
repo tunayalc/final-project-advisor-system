@@ -92,7 +92,7 @@ function extractTranscriptText(text, submittedName) {
         throw new TranscriptError('Transkriptte ad soyad alanı net okunamadı.');
     }
     if (normalizeName(transcriptFullName) !== normalizeName(submittedName)) {
-        throw new TranscriptError('Formdaki ad soyad transkriptteki öğrenci adıyla eşleşmiyor.');
+        throw new TranscriptError(`Formdaki ad soyad transkriptteki öğrenci adıyla eşleşmiyor. PDF'den okunan ad soyad: ${transcriptFullName}. Adınızı bu alandaki haliyle kontrol edin.`);
     }
 
     const universityValues = labelledValues(lines.filter((line, index) =>

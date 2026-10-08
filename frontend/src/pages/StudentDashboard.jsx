@@ -19,6 +19,7 @@ export default function StudentDashboard({ user, onUserUpdated }) {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState({ type: '', text: '' });
   const sessionUser = user || readStoredUser();
+  const updateStudentProfile = (updated) => setProfile(current => ({ ...current, ...updated }));
 
   const loadData = async () => {
     try {
@@ -217,7 +218,7 @@ export default function StudentDashboard({ user, onUserUpdated }) {
             </div>
           </section>
 
-          <AccountSettings user={user} onUserUpdated={onUserUpdated} />
+          <AccountSettings user={user} onUserUpdated={onUserUpdated} studentProfile={profile} onStudentUpdated={updateStudentProfile} />
         </div>
       ) : isAssigned ? (
         <div className="duo-grid">
@@ -236,7 +237,7 @@ export default function StudentDashboard({ user, onUserUpdated }) {
             </div>
           </section>
 
-          <AccountSettings user={user} onUserUpdated={onUserUpdated} />
+          <AccountSettings user={user} onUserUpdated={onUserUpdated} studentProfile={profile} onStudentUpdated={updateStudentProfile} />
         </div>
       ) : (
         <>
@@ -383,7 +384,7 @@ export default function StudentDashboard({ user, onUserUpdated }) {
             </section>
           </div>
 
-          <AccountSettings user={user} onUserUpdated={onUserUpdated} />
+          <AccountSettings user={user} onUserUpdated={onUserUpdated} studentProfile={profile} onStudentUpdated={updateStudentProfile} />
         </>
       )}
     </div>

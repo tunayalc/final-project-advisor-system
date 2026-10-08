@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { KeyRound, Mail, ShieldCheck } from 'lucide-react';
+import { CalendarDays, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import api from '../api';
 
-export default function AccountSettings({ user, onUserUpdated }) {
+export default function AccountSettings({ user, onUserUpdated, studentProfile, onStudentUpdated }) {
+  const [entryYear, setEntryYear] = useState(String(studentProfile?.entry_year ?? ''));
+  const [yearNotice, setYearNotice] = useState({ type: '', text: '' });
+  const [updatingYear, setUpdatingYear] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [emailPassword, setEmailPassword] = useState('');
   const [emailNotice, setEmailNotice] = useState({ type: '', text: '' });
@@ -12,6 +15,21 @@ export default function AccountSettings({ user, onUserUpdated }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [notice, setNotice] = useState({ type: '', text: '' });
   const [submitting, setSubmitting] = useState(false);
+
+  const handleYearSubmit = async (event) => {
+    event.preventDefault();
+    setYearNotice({ type: '', text: '' });
+    setUpdatingYear(true);
+    try {
+      const { data } = await api.patch('/students/me', { entry_year: entryYear });
+      setEntryYear(String(data.entry_year));
+      onStudentUpdated({ entry_year: data.entry_year });
+      onUserUpdated({ profile: { ...user?.profile, entry_year: data.entry_year } });
+      setYearNotice({ type: 'success', text: data.message });
+    } catch (error) {
+      setYearNotice({ type: 'error', text: error.response?.data?.error || 'Giriş yılı güncellenemedi.' });
+    } finally { setUpdatingYear(false); }
+  };
 
   const handleEmailSubmit = async (event) => {
     event.preventDefault();
@@ -69,7 +87,25 @@ export default function AccountSettings({ user, onUserUpdated }) {
         </span>
       </div>
 
-      <h3>E-posta güncelle</h3>
+      {studentProfile && (
+        <>
+          <h3>Giriş yılını düzelt</h3>
+          <p className="muted-copy">Üniversiteye ilk kayıt olduğunuz yılı girin.</p>
+          {yearNotice.text && <div role="status" className={`notice notice-${yearNotice.type}`}>{yearNotice.text}</div>}
+          <form className="stack-form" onSubmit={handleYearSubmit} aria-label="Giriş yılını güncelle">
+            <label className="field-block">
+              <span>Giriş yılı</span>
+              <input type="number" className="app-input" min="2000" max={new Date().getFullYear()}
+                value={entryYear} onChange={event => setEntryYear(event.target.value)} required />
+            </label>
+            <button type="submit" className="btn btn-primary" disabled={updatingYear}>
+              <CalendarDays size={16} /> {updatingYear ? 'Kaydediliyor' : 'Giriş yılını güncelle'}
+            </button>
+          </form>
+        </>
+      )}
+
+      <h3 className={studentProfile ? 'account-password-title' : undefined}>E-posta güncelle</h3>
       <p className="muted-copy account-email">Mevcut e-posta: <strong>{user?.email}</strong></p>
       <p className="muted-copy">Adresinizi değiştirdikten sonra yeni e-posta adresinizle giriş yapın. Diğer açık oturumlarınızda yeniden giriş yapmanız gerekir.</p>
       {emailNotice.text && <div role="status" className={`notice notice-${emailNotice.type}`}>{emailNotice.text}</div>}

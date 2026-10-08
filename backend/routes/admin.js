@@ -7,8 +7,37 @@ const engine = require('../engine/assignment');
 const { resetSystem, ResetError } = require('../services/reset-system');
 const { pipeline } = require('node:stream/promises');
 const { prepareExport, exportZip, transcriptBytes } = require('../services/system-export');
+const { parseEntryYear } = require('../services/entry-year');
 
 const router = express.Router();
+
+router.get('/password-help-requests', authenticate, authorize('admin'), async (req, res, next) => {
+  try {
+    const requests = await getDb().prepare(`SELECT r.id, r.created_at, u.full_name, u.email, u.role
+      FROM password_help_requests r JOIN users u ON u.id = r.user_id
+      WHERE r.status = 'pending' ORDER BY r.created_at DESC, r.id DESC`).all();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(requests);
+  } catch (error) { next(error); }
+});
+
+router.patch('/password-help-requests/:id', authenticate, authorize('admin'), async (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0 || req.body?.status !== 'reviewed') {
+    return res.status(400).json({ error: 'Geçerli bir talep ve görüldü durumu seçin.' });
+  }
+  try {
+    const db = getDb();
+    const exists = await db.transaction(async () => {
+      const request = await db.prepare('SELECT id FROM password_help_requests WHERE id = ?').get(id);
+      if (!request) return false;
+      await db.prepare("UPDATE password_help_requests SET status = 'reviewed', reviewed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'").run(id);
+      return true;
+    })();
+    if (!exists) return res.status(404).json({ error: 'Şifre yardım talebi bulunamadı.' });
+    res.json({ message: 'Talep görüldü olarak işaretlendi.' });
+  } catch (error) { next(error); }
+});
 
 function downloadArchive(transcriptsOnly) {
   return async (req, res, next) => {
@@ -427,7 +456,7 @@ router.patch('/students/:studentId/review', authenticate, authorize('admin'), as
     const normalizedName = String(full_name || '').trim();
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const parsedGano = Number(gano);
-    const parsedEntryYear = Number(entry_year);
+    const parsedEntryYear = parseEntryYear(entry_year);
 
     if (!['pending', 'approved', 'rejected'].includes(normalizedStatus)) {
       return res.status(400).json({ error: 'Geçerli bir onay durumu seçin.' });
@@ -441,7 +470,7 @@ router.patch('/students/:studentId/review', authenticate, authorize('admin'), as
       return res.status(400).json({ error: 'GANO 0 ile 4 arasında olmalıdır.' });
     }
 
-    if (!Number.isInteger(parsedEntryYear) || parsedEntryYear < 2000 || parsedEntryYear > 2100) {
+    if (parsedEntryYear === null) {
       return res.status(400).json({ error: 'Geçerli bir giriş yılı girin.' });
     }
 

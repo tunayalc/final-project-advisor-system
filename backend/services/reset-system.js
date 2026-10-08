@@ -20,7 +20,7 @@ async function resetSystem(db) {
     }
     const removedUsers = (await db.prepare("SELECT COUNT(*) AS count FROM users WHERE role <> 'hoca'").get()).count;
     const preservedFaculty = (await db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'hoca'").get()).count;
-    for (const table of ['student_transcripts', 'preferences', 'pre_assignments', 'assignment_logs', 'selection_backups', 'students']) {
+    for (const table of ['password_help_requests', 'student_transcripts', 'preferences', 'pre_assignments', 'assignment_logs', 'selection_backups', 'students']) {
       await db.prepare(`DELETE FROM ${table}`).run();
     }
     await db.prepare("DELETE FROM users WHERE role <> 'hoca'").run();

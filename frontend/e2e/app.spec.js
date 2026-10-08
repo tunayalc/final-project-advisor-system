@@ -608,3 +608,121 @@ test('reset requires admin confirmation and preserves faculty identities', async
   const faculty = await (await request.get(`${apiBaseUrl}/admin/faculty-overview`, { headers: newHeaders })).json();
   expect(faculty.every(item => item.base_quota === 0 && item.current_quota === 0)).toBeTruthy();
 });
+
+test('entry year updates only the current student and preserves transcript, preferences and assignment', async ({ request }) => {
+  const unique = Date.now();
+  const owner = await registerStudent(request, { email: `year.owner.${unique}@example.invalid`, fullName: 'Entry Year Owner' });
+  const other = await registerStudent(request, { email: `year.other.${unique}@example.invalid`, fullName: 'Entry Year Other' });
+  const headers = { Authorization: `Bearer ${owner.token}` };
+  const preferences = await saveFirstPreferences(request, owner.token, 2);
+  const readProfile = () => request.get(`${apiBaseUrl}/students/me`, { headers }).then(r => r.json());
+  const before = await readProfile();
+  const patch = data => request.patch(`${apiBaseUrl}/students/me`, { headers, data });
+  expect((await request.patch(`${apiBaseUrl}/students/me`, { data: { entry_year: 2022 } })).status()).toBe(401);
+  const admin = await getAdminToken(request);
+  expect((await request.patch(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${admin}` }, data: { entry_year: 2022 } })).status()).toBe(403);
+  for (const entry_year of [null, false, '', [], {}, '2022.5', 1999, new Date().getFullYear() + 1]) {
+    expect((await patch({ entry_year })).status()).toBe(400);
+  }
+  expect((await request.patch(`${apiBaseUrl}/students/me`, { headers })).status()).toBe(400);
+  const changed = await patch({ entry_year: '2022', user_id: other.user.id, gano: 4, department_id: 999, is_assigned: 1 });
+  expect(changed.status()).toBe(200);
+  expect(await readProfile()).toEqual({ ...before, entry_year: 2022 });
+  expect((await (await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${other.token}` } })).json()).entry_year).toBe(2024);
+  expect((await (await request.get(`${apiBaseUrl}/students/preferences`, { headers })).json()).map(p => p.id)).toEqual(preferences);
+  const pdf = await request.get(`${apiBaseUrl}/admin/students/${before.id}/transcript`, { headers: { Authorization: `Bearer ${admin}` } });
+  expect(await pdf.body()).toEqual(makeTranscriptPdf({ fullName: 'Entry Year Owner' }));
+  const logs = await (await request.get(`${apiBaseUrl}/admin/logs`, { headers: { Authorization: `Bearer ${admin}` } })).json();
+  expect(logs.filter(log => log.student_id === before.id && log.action === 'UPDATE_ENTRY_YEAR')).toHaveLength(1);
+  expect((await patch({ entry_year: 2022 })).status()).toBe(200);
+  const assigned = await request.post(`${apiBaseUrl}/admin/force-assign`, { headers: { Authorization: `Bearer ${admin}` }, data: { student_id: before.id, faculty_id: preferences[0] } });
+  expect(assigned.status()).toBe(200);
+  const beforeAssigned = await readProfile();
+  expect((await patch({ entry_year: 2021 })).status()).toBe(200);
+  expect(await readProfile()).toEqual({ ...beforeAssigned, entry_year: 2021 });
+});
+
+test('registration requires an explicit year and changing it keeps unsaved preference edits', async ({ page, request }) => {
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Öğrenci Kaydı', exact: true }).click();
+  await expect(page.getByLabel('Giriş yılı', { exact: true })).toHaveValue('');
+  const email = `year.ui.${Date.now()}@example.invalid`;
+  const registration = await registerStudent(request, { email, fullName: 'Entry Year Student' });
+  await saveFirstPreferences(request, registration.token, 2);
+  await login(page, email, studentPassword);
+  await expect(page.locator('.preference-card')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Ekle', exact: true }).first().click();
+  await expect(page.locator('.preference-card')).toHaveCount(3);
+  const draftNames = await page.locator('.preference-card h3').allTextContents();
+  await page.getByRole('button', { name: 'Hesap', exact: true }).click();
+  const settings = page.getByRole('region', { name: 'Hesap ayarları', exact: true });
+  await settings.getByLabel('Giriş yılı', { exact: true }).fill('2023');
+  await settings.getByRole('button', { name: 'Giriş yılını güncelle', exact: true }).click();
+  await expect(settings.getByRole('status')).toContainText('Giriş yılınız güncellendi');
+  expect(await page.locator('.preference-card h3').allTextContents()).toEqual(draftNames);
+  mkdirSync('../output/playwright/complaint-fixes', { recursive: true });
+  await page.screenshot({ path: '../output/playwright/complaint-fixes/giris-yili.png', fullPage: true });
+  await page.reload();
+  await expect(settings.getByLabel('Giriş yılı', { exact: true })).toHaveValue('2023');
+  await expect(page.locator('.preference-card')).toHaveCount(2);
+});
+
+test('forgot password only notifies admins, suppresses duplicate requests and preserves credentials', async ({ request }) => {
+  const email = `forgot.${Date.now()}@example.invalid`;
+  const registration = await registerStudent(request, { email, fullName: 'Password Help Student' });
+  const help = data => request.post(`${apiBaseUrl}/auth/password-help`, { data });
+  for (const email of [null, ['test@example.invalid'], 'invalid', `${'a'.repeat(255)}@example.invalid`]) {
+    expect((await help({ email })).status()).toBe(400);
+  }
+  const known = await help({ email, new_password: 'MUST_NOT_REPLACE_PASSWORD' });
+  const unknown = await help({ email: `unknown.${Date.now()}@example.invalid` });
+  expect(known.status()).toBe(200);
+  expect(unknown.status()).toBe(200);
+  expect(await known.json()).toEqual(await unknown.json());
+  for (const response of await Promise.all([1, 2, 3].map(() => help({ email: ` ${email.toUpperCase()} ` })))) expect(response.status()).toBe(200);
+  const admin = await getAdminToken(request);
+  const headers = { Authorization: `Bearer ${admin}` };
+  const url = `${apiBaseUrl}/admin/password-help-requests`;
+  expect((await request.get(url)).status()).toBe(401);
+  expect((await request.get(url, { headers: { Authorization: `Bearer ${registration.token}` } })).status()).toBe(403);
+  const list = await request.get(url, { headers });
+  expect(list.headers()['cache-control']).toBe('no-store');
+  const matches = (await list.json()).filter(row => row.email === email);
+  expect(matches).toHaveLength(1);
+  expect(matches[0]).not.toHaveProperty('password_hash');
+  await loginApi(request, email, studentPassword);
+  expect((await request.get(`${apiBaseUrl}/students/me`, { headers: { Authorization: `Bearer ${registration.token}` } })).status()).toBe(200);
+  const reviewUrl = `${url}/${matches[0].id}`;
+  expect((await request.patch(reviewUrl, { headers: { Authorization: `Bearer ${registration.token}` }, data: { status: 'reviewed' } })).status()).toBe(403);
+  expect((await request.patch(reviewUrl, { headers, data: { status: 'pending' } })).status()).toBe(400);
+  expect((await request.patch(reviewUrl, { headers, data: { status: 'reviewed' } })).status()).toBe(200);
+  expect((await request.patch(reviewUrl, { headers, data: { status: 'reviewed' } })).status()).toBe(200);
+  expect((await (await request.get(url, { headers })).json()).some(row => row.email === email)).toBe(false);
+  expect((await help({ email })).status()).toBe(200);
+  const renewed = (await (await request.get(url, { headers })).json()).find(row => row.email === email);
+  expect(renewed.id).not.toBe(matches[0].id);
+});
+
+test('forgot password UI delivers a notification, admin refreshes automatically and marks it seen', async ({ page, request }) => {
+  const email = `help.ui.${Date.now()}@example.invalid`;
+  await registerStudent(request, { email, fullName: 'Password Help UI Student' });
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Şifremi unuttum', exact: true }).click();
+  await page.getByLabel('Kayıtlı e-posta adresi', { exact: true }).fill(email);
+  await page.getByRole('button', { name: 'Yöneticiye bildir', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('şifre yardım talebiniz yöneticiye iletildi');
+  mkdirSync('../output/playwright/complaint-fixes', { recursive: true });
+  await page.screenshot({ path: '../output/playwright/complaint-fixes/sifremi-unuttum.png', fullPage: true });
+  await page.getByRole('button', { name: 'Girişe dön', exact: true }).click();
+  await page.clock.install();
+  await login(page, 'admin@ankara.edu.tr', 'AdminTest1234!');
+  const inbox = page.getByRole('region', { name: 'Şifremi unuttum bildirimleri', exact: true });
+  const row = inbox.getByRole('row').filter({ hasText: email });
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Görüldü işaretle', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await request.post(`${apiBaseUrl}/auth/password-help`, { data: { email } });
+  await page.clock.fastForward(30000);
+  await expect(row).toBeVisible();
+  await page.screenshot({ path: '../output/playwright/complaint-fixes/admin-bildirim.png', fullPage: true });
+});

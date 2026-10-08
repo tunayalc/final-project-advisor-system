@@ -51,6 +51,7 @@ test('full ZIP contains original PDFs, all current tables and historical revisio
   first = await student('first@example.invalid', true);
   second = await student('second@example.invalid', true);
   await student('missing@example.invalid', false);
+  await db.prepare('INSERT INTO password_help_requests (user_id) VALUES (?)').run(first.userId);
   const faculty = await db.prepare('SELECT id FROM faculty ORDER BY id LIMIT 1').get();
   await db.transaction(async () => {
     await db.prepare('INSERT INTO preferences (student_id, faculty_id, rank) VALUES (?, ?, 1)').run(first.id, faculty.id);
@@ -72,6 +73,9 @@ test('full ZIP contains original PDFs, all current tables and historical revisio
     assert(!json.includes('password_hash'));
     const { data } = JSON.parse(json);
     assert.equal(data.students.length, 3);
+    assert.equal(data.password_help_requests.length, 1);
+    assert.equal(data.password_help_requests[0].user_id, first.userId);
+    assert(data.system_events.some(item => item.table_name === 'password_help_requests' && item.operation === 'INSERT'));
     assert.equal(data.preferences.length, 1);
     assert.equal(data.students.find(item => item.id === first.id).assigned_faculty_id, faculty.id);
     assert.equal(data.selection_backups[0].record.selection.preferences[0].rank, 1);

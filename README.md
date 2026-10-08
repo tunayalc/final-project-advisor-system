@@ -37,6 +37,10 @@ Remove-Item Env:ACCOUNT_PASSWORD
 
 API: `GET /api/auth/me`, `POST /api/auth/change-email` (`new_email`, `current_password`), `POST /api/auth/change-password` (`current_password`, `new_password`). Her işlem giriş gerektirir ve yalnızca mevcut kullanıcıyı etkiler.
 
+Öğrenciler **Hesap > Giriş yılını düzelt** alanından üniversiteye ilk kayıt oldukları yılı güncelleyebilir. Kayıt formu yılı otomatik seçmez; 2000 ile içinde bulunulan yıl arasında bir değer gerekir. `PATCH /api/students/me` yalnızca oturumdaki öğrencinin `entry_year` alanını günceller; tercih taslağı, kaydedilmiş tercihler, GANO, transkript ve atama korunur. Değişiklik işlem günlüğüne ve ayrıntılı geçmişe kaydedilir.
+
+Giriş ekranındaki **Şifremi unuttum**, kayıtlı e-postayla bir yardım bildirimi oluşturur (`POST /api/auth/password-help`). Şifreyi değiştirmez, sıfırlama bağlantısı veya e-posta göndermez. Yönetici panelindeki **Şifremi unuttum bildirimleri** 30 saniyede bir yenilenir; yalnızca yöneticiler talepleri okuyabilir ve görüldü işaretleyebilir. Aynı kullanıcı için tek bekleyen talep tutulur. Kayıtsız e-postalar bildirim oluşturmaz; yanıt hesap varlığını açıklamaz. Bildirim geçmişi tüm kayıtlar ZIP'ine dahildir ve sistem sıfırlamasında temizlenir.
+
 ## Öğrenci kaydı
 
 Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş yılı ve PDF transkript gönderilir. e-Devlet ve OBS / üniversite tarafından verilen transkript PDF’leri kabul edilir. e-Devlet belgesi alamayan yabancı öğrenciler de OBS / üniversite belgesiyle kayıt olabilir; T.C. kimlik numarası kayıt doğrulamasının koşulu değildir. Tek bölüm Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği'dir.

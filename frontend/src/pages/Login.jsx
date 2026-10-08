@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, FileText, Lock, TriangleAlert, UserPlus, UserRound } from 'lucide-react';
 import api from '../api';
 import AssignmentGuide from '../components/AssignmentGuide';
+import PasswordHelp from '../components/PasswordHelp';
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState('login');
+  const [showPasswordHelp, setShowPasswordHelp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [registerForm, setRegisterForm] = useState({
@@ -13,7 +15,7 @@ export default function Login({ onLogin }) {
     email: '',
     password: '',
     department_id: '',
-    entry_year: String(new Date().getFullYear()),
+    entry_year: '',
     transcript: null,
   });
   const [departments, setDepartments] = useState([]);
@@ -133,7 +135,7 @@ export default function Login({ onLogin }) {
         <div className="section-header">
           <div>
             <p className="eyebrow">{mode === 'login' ? 'Giriş' : 'Öğrenci Kaydı'}</p>
-            <h2>{mode === 'login' ? 'Sisteme erişin' : 'Kendi hesabınızı oluşturun'}</h2>
+            <h2>{mode === 'login' ? (showPasswordHelp ? 'Şifre yardım talebi' : 'Sisteme erişin') : 'Kendi hesabınızı oluşturun'}</h2>
           </div>
         </div>
 
@@ -141,7 +143,7 @@ export default function Login({ onLogin }) {
           <button
             type="button"
             className={`segmented-option ${mode === 'login' ? 'is-active' : ''}`}
-            onClick={() => setMode('login')}
+            onClick={() => { setMode('login'); setShowPasswordHelp(false); }}
           >
             <ArrowRight size={16} />
             Giriş
@@ -158,51 +160,56 @@ export default function Login({ onLogin }) {
 
         <p className="muted-copy">
           {mode === 'login'
-            ? 'Kurumsal e-posta adresiniz ve şifreniz ile oturum açın.'
+            ? (showPasswordHelp ? 'Şifrenizi unuttuğunuzu yöneticiye bildirin.' : 'Kurumsal e-posta adresiniz ve şifreniz ile oturum açın.')
             : 'e-Devlet veya OBS / üniversite transkriptinizdeki ad soyad, GANO, üniversite ve bölüm okunur. Adınız form ile, üniversite ve bölüm bilgileriniz Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği ile eşleşirse hesabınız anında onaylanır.'}
         </p>
 
         {mode === 'login' ? (
-          <>
-            {error && <div className="notice notice-error">{error}</div>}
+          showPasswordHelp ? (
+            <PasswordHelp onBack={() => setShowPasswordHelp(false)} />
+          ) : (
+            <>
+              {error && <div className="notice notice-error">{error}</div>}
 
-            <form className="stack-form" onSubmit={handleLogin}>
-              <label className="field-block">
-                <span>E-posta adresi</span>
-                <div className="field-with-icon">
-                  <UserRound size={16} />
-                  <input
-                    type="email"
-                    className="app-input"
-                    placeholder="ogrencinumarasi@ogrenci.ankara.edu.tr"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    required
-                  />
-                </div>
-              </label>
+              <form className="stack-form" onSubmit={handleLogin}>
+                <label className="field-block">
+                  <span>E-posta adresi</span>
+                  <div className="field-with-icon">
+                    <UserRound size={16} />
+                    <input
+                      type="email"
+                      className="app-input"
+                      placeholder="ogrencinumarasi@ogrenci.ankara.edu.tr"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      required
+                    />
+                  </div>
+                </label>
 
-              <label className="field-block">
-                <span>Şifre</span>
-                <div className="field-with-icon">
-                  <Lock size={16} />
-                  <input
-                    type="password"
-                    className="app-input"
-                    placeholder="En az 8 karakter"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                  />
-                </div>
-              </label>
+                <label className="field-block">
+                  <span>Şifre</span>
+                  <div className="field-with-icon">
+                    <Lock size={16} />
+                    <input
+                      type="password"
+                      className="app-input"
+                      placeholder="En az 8 karakter"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      required
+                    />
+                  </div>
+                </label>
 
-              <button type="submit" className="btn btn-primary btn-wide" disabled={loading}>
-                <ArrowRight size={16} />
-                {loading ? 'Oturum açılıyor' : 'Devam et'}
-              </button>
-            </form>
-          </>
+                <button type="submit" className="btn btn-primary btn-wide" disabled={loading}>
+                  <ArrowRight size={16} />
+                  {loading ? 'Oturum açılıyor' : 'Devam et'}
+                </button>
+              </form>
+              <button type="button" className="btn btn-ghost" onClick={() => setShowPasswordHelp(true)}>Şifremi unuttum</button>
+            </>
+          )
         ) : (
           <>
             {registerError && <div className="notice notice-error">{registerError}</div>}
@@ -267,18 +274,23 @@ export default function Login({ onLogin }) {
               </div>
 
               <div className="duo-grid align-start">
-                <label className="field-block">
-                  <span>Giriş yılı</span>
-                  <input
-                    type="number"
-                    min="2000"
-                    max="2100"
-                    className="app-input"
-                    value={registerForm.entry_year}
-                    onChange={(event) => updateRegisterForm('entry_year', event.target.value)}
-                    required
-                  />
-                </label>
+                <div className="field-block">
+                  <label className="field-block">
+                    <span>Giriş yılı</span>
+                    <input
+                      type="number"
+                      min="2000"
+                      max={new Date().getFullYear()}
+                      placeholder="Ör. 2023"
+                      aria-describedby="entry-year-help"
+                      className="app-input"
+                      value={registerForm.entry_year}
+                      onChange={(event) => updateRegisterForm('entry_year', event.target.value)}
+                      required
+                    />
+                  </label>
+                  <small id="entry-year-help">Üniversiteye ilk kayıt olduğunuz yılı girin. Bu bilgiyi sonradan Hesap bölümünden düzeltebilirsiniz.</small>
+                </div>
               </div>
 
               <label className="field-block">
