@@ -151,4 +151,4 @@ async function extractTranscriptInfo(buffer, submittedName) {
     }
 }
 
-module.exports = { UNIVERSITY, DEPARTMENT, TranscriptError, extractTranscriptInfo, extractTranscriptText };
+module.exports = { UNIVERSITY, DEPARTMENT, TranscriptError, extractTranscriptInfo, extractTranscriptText, normalizeName };

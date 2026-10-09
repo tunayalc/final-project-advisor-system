@@ -8,6 +8,7 @@ const { resetSystem, ResetError } = require('../services/reset-system');
 const { pipeline } = require('node:stream/promises');
 const { prepareExport, exportZip, transcriptBytes } = require('../services/system-export');
 const { parseEntryYear } = require('../services/entry-year');
+const { assertStudentNameAvailable, DuplicateStudentNameError } = require('../services/student-identity');
 
 const router = express.Router();
 
@@ -492,6 +493,7 @@ router.patch('/students/:studentId/review', authenticate, authorize('admin'), as
         run(student.assigned_faculty_id);
       }
 
+      await assertStudentNameAvailable(db, normalizedName, student.user_id);
       await db.prepare('UPDATE users SET full_name = ?, email = ? WHERE id = ?').
       run(normalizedName, normalizedEmail, student.user_id);
       await db.prepare(`
@@ -515,6 +517,9 @@ router.patch('/students/:studentId/review', authenticate, authorize('admin'), as
 
     res.json({ message: 'Öğrenci kaydı güncellendi.' });
   } catch (err) {
+    if (err instanceof DuplicateStudentNameError) {
+      return res.status(409).json({ error: err.message });
+    }
     console.error(err);
     res.status(500).json({ error: 'Sunucu hatası.' });
   }

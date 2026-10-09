@@ -7,6 +7,7 @@ const { DEPARTMENT, TranscriptError, extractTranscriptInfo } = require('../servi
 const { getDb } = require('../db/database');
 const { authenticate, JWT_SECRET } = require('../middleware/auth');
 const { parseEntryYear } = require('../services/entry-year');
+const { assertStudentNameAvailable, DuplicateStudentNameError } = require('../services/student-identity');
 
 const router = express.Router();
 
@@ -90,12 +91,16 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
       return res.status(400).json({ error: 'Kayıt yalnızca Yapay Zeka ve Veri Mühendisliği bölümüne açıktır.' });
     }
 
+    await assertStudentNameAvailable(db, normalizedName);
     const transcriptInfo = await extractTranscriptInfo(req.file.buffer, normalizedName);
 
     const password_hash = bcrypt.hashSync(String(password), 10);
     let userId;
 
     await db.transaction(async () => {
+      // Transactions serialize account creation in both SQLite and PostgreSQL.
+      // Repeat the check with the transcript name to cover concurrent requests.
+      await assertStudentNameAvailable(db, transcriptInfo.transcriptFullName);
       const insertUser = db.prepare(
         'INSERT INTO users (email, password_hash, role, full_name) VALUES (?, ?, ?, ?)'
       );
@@ -162,6 +167,9 @@ router.post('/register', handleTranscriptUpload, async (req, res) => {
       }
     });
   } catch (err) {
+    if (err instanceof DuplicateStudentNameError) {
+      return res.status(409).json({ error: err.message });
+    }
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı.' });
     }

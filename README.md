@@ -43,6 +43,8 @@ Giriş ekranındaki **Şifremi unuttum**, kayıtlı e-postayla bir yardım bildi
 
 ## Öğrenci kaydı
 
+Aynı ad ve soyadla ikinci öğrenci hesabı açılamaz; farklı e-posta kullanılması bu kontrolü değiştirmez. Ad soyad, transkript doğrulamasındaki harf ve boşluk kurallarıyla karşılaştırılır. Bekleyen ve reddedilmiş hesaplar da kontrol edilir. Kayıt tamamlanırken kontrol aynı veritabanı işlemi içinde tekrar yapılarak eşzamanlı başvurulardan yalnızca biri kabul edilir. Yönetici incelemesinde bir hesabın adı başka bir öğrencinin adına da değiştirilemez.
+
 Giriş ekranındaki **Öğrenci Kaydı** ile ad soyad, e-posta, şifre, giriş yılı ve PDF transkript gönderilir. e-Devlet ve OBS / üniversite tarafından verilen transkript PDF’leri kabul edilir. e-Devlet belgesi alamayan yabancı öğrenciler de OBS / üniversite belgesiyle kayıt olabilir; T.C. kimlik numarası kayıt doğrulamasının koşulu değildir. Tek bölüm Ankara Üniversitesi Yapay Zeka ve Veri Mühendisliği'dir.
 
 OBS’nin sütunlu ad/soyad ve bölüm düzeni desteklenir; sayfalarda yinelenen kimlik bilgilerinin tutarlılığı kontrol edilir. Dönem ortalaması (YABNO) yerine belgedeki son kümülatif GABNO/GANO kullanılır. Ana sayfa, YÖKSİS e-Devlet Bilgi Güncelle işlemini ve bir günlük güncellenme süresini yalnızca e-Devlet belgeleri için açıklar. Her iki belge kaynağında da güncel ve doğru ortalamanın kontrol edilmesi istenir.
