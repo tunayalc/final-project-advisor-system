@@ -3,6 +3,7 @@ import { Calculator, Check, Download, Play, RefreshCcw, ShieldCheck, Trash2, Use
 import api from '../api';
 import AccountSettings from '../components/AccountSettings';
 import PasswordHelpInbox from '../components/PasswordHelpInbox';
+import ReassignmentPanel from '../components/ReassignmentPanel';
 
 const ROLE_LABELS = {
   admin: 'Yönetici',
@@ -42,8 +43,11 @@ export default function AdminDashboard({ user, onUserUpdated }) {
   const [resetting, setResetting] = useState(false);
   const [exporting, setExporting] = useState('');
   const [notice, setNotice] = useState({ type: '', text: '' });
+  const [dataVersion, setDataVersion] = useState(0);
+  const [reassigning, setReassigning] = useState(false);
 
   const loadData = async () => {
+    setDataVersion((version) => version + 1);
     try {
       const [
         statsResponse,
@@ -364,7 +368,7 @@ export default function AdminDashboard({ user, onUserUpdated }) {
             <Download size={16} />
             Sonuçları indir
           </button>
-          <button type="button" className="btn btn-outline" onClick={loadData}>
+          <button type="button" className="btn btn-outline" onClick={loadData} disabled={reassigning}>
             <RefreshCcw size={16} />
             Verileri yenile
           </button>
@@ -617,12 +621,22 @@ export default function AdminDashboard({ user, onUserUpdated }) {
         )}
       </section>
 
+      <ReassignmentPanel
+        dataVersion={dataVersion}
+        disabled={loading}
+        onBusyChange={setReassigning}
+        onApplied={async (response) => {
+          setNotice({ type: 'success', text: `Yeniden dağıtım tamamlandı. ${response.stats.totalStudents - response.stats.unplaced} öğrenci yerleştirildi; ${response.stats.changed} öğrencinin danışmanı değişti.` });
+          await loadData();
+        }}
+      />
+
       <div className="duo-grid align-start">
         <section className="panel">
           <div className="section-header">
             <div>
               <p className="eyebrow">Operasyonlar</p>
-              <h2>Yerleştirme akışı</h2>
+              <h2>Atanmamış öğrencileri yerleştir</h2>
             </div>
             <span className="icon-chip">
               <ShieldCheck size={18} />
@@ -630,8 +644,12 @@ export default function AdminDashboard({ user, onUserUpdated }) {
           </div>
 
           <p className="muted-copy">
-            Kontenjan hesabı aktif danışmanlara dengeli dağıtılır. Merkezi yerleştirme,
-            onaylı öğrencileri %80 GANO ve %20 tercih sırası puanına göre işler.
+            Bu işlem, henüz danışmanı olmayan onaylı öğrencileri %80 GANO ve %20 tercih
+            sırası puanıyla yerleştirir. Mevcut atamaları da değiştirmek için
+            {' '}<a href="#reassignment-panel" onClick={(event) => {
+              event.preventDefault();
+              document.getElementById('reassignment-panel')?.scrollIntoView({ behavior: 'smooth' });
+            }}>bütün öğrencileri yeniden yerleştir</a> bölümünü kullanın.
           </p>
 
           <div className="action-stack">
@@ -639,7 +657,7 @@ export default function AdminDashboard({ user, onUserUpdated }) {
               type="button"
               className="btn btn-outline"
               onClick={() => handleAction('calculate-quotas', 'Kontenjanlar güncellendi')}
-              disabled={loading}
+              disabled={loading || reassigning}
             >
               <Calculator size={16} />
               Kontenjanları hesapla
@@ -648,7 +666,7 @@ export default function AdminDashboard({ user, onUserUpdated }) {
               type="button"
               className="btn btn-primary"
               onClick={() => handleAction('run-assignment', 'Merkezi yerleştirme tamamlandı')}
-              disabled={loading}
+              disabled={loading || reassigning}
             >
               <Play size={16} />
               Merkezi yerleştirmeyi çalıştır

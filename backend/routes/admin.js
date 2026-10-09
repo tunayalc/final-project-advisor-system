@@ -9,8 +9,21 @@ const { pipeline } = require('node:stream/promises');
 const { prepareExport, exportZip, transcriptBytes } = require('../services/system-export');
 const { parseEntryYear } = require('../services/entry-year');
 const { assertStudentNameAvailable, DuplicateStudentNameError } = require('../services/student-identity');
+const { previewReassignment, applyReassignment, ReassignmentError } = require('../services/reassignment');
 
 const router = express.Router();
+
+for (const [action, handler] of [['preview', previewReassignment], ['apply', applyReassignment]]) {
+  router.post(`/reassignment/${action}`, authenticate, authorize('admin'), async (req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(await handler(getDb(), req.body || {}, req.user.id));
+    } catch (error) {
+      if (error instanceof ReassignmentError) return res.status(error.status).json({ error: error.message });
+      next(error);
+    }
+  });
+}
 
 router.get('/password-help-requests', authenticate, authorize('admin'), async (req, res, next) => {
   try {

@@ -17,6 +17,7 @@ export default function AssignmentGuide() {
       </dl>
       <p className="notice notice-info"><strong>Örnek:</strong> GANO’nuz 3,20 ise GANO puanınız 80’dir. İlk tercihiniz için toplam puanınız 80 × 0,80 + 100 × 0,20 = <strong>84</strong> olur.</p>
       <p className="muted-copy">Yüksek puan öncelik sağlar; ilk tercihinize yerleşme garantisi vermez. Puan eşitliğinde önce yüksek GANO, ardından daha üst tercih sırası dikkate alınır. Eşitlik sürerse sistemdeki kayıt sırası kullanılır.</p>
+      <p className="muted-copy">Bütün öğrenciler yeniden dağıtılırken, bölümdeki hocalara önce eşit kontenjan verilir. Bu kontenjanını puanlı yerleştirmede en erken dolduran hocalar kalan yerlerden birer tane alır. Ardından son kontenjanlarla yerleştirme baştan hesaplanır.</p>
       <p className="muted-copy">Tercihlerine yerleşemeyen veya tercih yapmayan öğrenciler, bölümde kalan kontenjanlara göre değerlendirilir. Toplam puan, GANO ve tercih katkıları ile tercih sırası yöneticinin işlem günlüğünde gösterilir.</p>
     </section>
   );

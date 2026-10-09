@@ -14,6 +14,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+// Preference archives are verified by the reassignment service (5 MB maximum).
+app.use('/api/admin/reassignment', express.json({ limit: '10mb' }));
 app.use(express.json());
 
 app.get('/api/health', async (req, res) => {

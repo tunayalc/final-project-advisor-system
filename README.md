@@ -59,6 +59,16 @@ Bu işlem PDF metninin tutarlılığını kontrol eder; dijital imza, barkod vey
 
 Ana sayfa rehberi GANO puanını `(GANO / 4) × 100`, toplam puanı `GANO puanı × 0,80 + tercih puanı × 0,20` olarak açıklar. İlk tercih 100, son tercih 0, aradaki tercihler eşit aralıklarla puanlanır; tek tercih 100 puandır. Örnek: 3,20 GANO ve ilk tercih için 84 puan. Kontenjan, eşitlik ve boş kontenjana atama kuralları da rehberde açıklanır.
 
+## Kontenjan ve yeniden dağıtım
+
+Kontenjanlar her bölümdeki onaylı öğrenci ve aktif danışman sayısından hesaplanır. Her danışmana `floor(öğrenci / danışman)` kadar ortak kontenjan ayrılır. Bu kontenjanlarla yapılan geçici puanlı yerleştirmede kontenjanını en erken dolduran danışmanlara kalan yerler birer tane verilir. Son yerleştirme, bu nihai kontenjanlarla baştan hesaplanır. Öğrenci sayısı danışman sayısından azsa geçici kontenjan bir olur ve öğrenci alan danışmanlara birer yer ayrılır. Sayılar ve danışman adları koda sabitlenmez.
+
+Yönetici panelindeki yeniden dağıtım alanında mevcut tercihler kullanılabilir veya daha önce indirilmiş tercih geçmişi JSONL dosyası seçilebilir. Arşivde her mevcut öğrencinin son kaydedilmiş tercihi alınır; dosyadaki kayıtların bütünlüğü ve sunucudaki geçmişle eşleşmesi doğrulanır. Silinmiş öğrenciler geri getirilmez. Seçilen arşivde mevcut onaylı bir öğrencinin kaydı eksikse işlem hata verir.
+
+`POST /api/admin/reassignment/preview` hoca sırasını, kontenjanları ve önceki/yeni atamaları döndürür. `POST /api/admin/reassignment/apply` aynı kaynakla birlikte önizlemenin `fingerprint` değerini ister. Kaynak, öğrenci veya danışman bilgileri değişmişse `409` döner ve yeni önizleme gerekir. Her iki işlem yalnızca yöneticiye açıktır. Arşiv kullanılırken gövdeye `archive_text` ve `source_name` eklenir.
+
+Yeniden dağıtım, daha önce atanmış olanlar dahil bütün onaylı öğrencileri kapsar. Atamalar ve kontenjanlar tek veritabanı işlemiyle güncellenir; hata halinde işlem geri alınır. Tercihler, hesaplar, transkriptler ve önceki geçmiş korunur; kullanılan kaynak ile önceki/yeni atamalar günlüğe eklenir. Tercihleri üzerinden yerleşemeyenler aynı bölümdeki boş kontenjanlara yerleştirilir ve sonuçta ayrı belirtilir.
+
 ## Canlı ortam
 
 `backend/.env.example` değişkenlerini sunucunun gizli ortam ayarlarında doldurun. `JWT_SECRET` en az 32 karakterli rastgele bir anahtar, ilk kurulumdaki `ADMIN_PASSWORD` en az 12 karakter olmalıdır. Backend `.env` dosyasını otomatik okur. Eski kurulumdan kalan yönetici şifresi otomatik değişmez; taşıma sırasında güncelleyin.
