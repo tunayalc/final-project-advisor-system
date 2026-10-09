@@ -17,6 +17,57 @@ const APPROVAL_LABELS = {
   rejected: 'Reddedildi',
 };
 
+const REASSIGNMENT_ACTION_LABELS = {
+  REASSIGNMENT_RUN: 'Yeniden dağıtım',
+  REASSIGN_STUDENT: 'Öğrenci yeniden yerleştirildi',
+};
+
+function describeAssignmentLog(log, facultyList) {
+  if (!REASSIGNMENT_ACTION_LABELS[log.action]) return log.details || '-';
+  const unavailable = 'Bu işlemin ayrıntıları arşiv kaydında bulunuyor.';
+  let details;
+  try {
+    details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+  } catch {
+    return unavailable;
+  }
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return unavailable;
+
+  if (log.action === 'REASSIGNMENT_RUN') {
+    const stats = details.stats || {};
+    const summaries = [
+      [stats.totalStudents, 'öğrenci değerlendirildi'],
+      [stats.changed, 'öğrencinin danışmanı değişti'],
+      [stats.placedRandomly, 'öğrenci boş kontenjandan yerleşti'],
+      [stats.unplaced, 'öğrenci atanamadı'],
+    ].filter(([count]) => Number.isFinite(count) && count >= 0)
+      .map(([count, description]) => `${count} ${description}`);
+    const source = typeof details.source?.name === 'string' ? ` Kaynak: ${details.source.name}.` : '';
+    return summaries.length ? `${summaries.join('; ')}.${source}` : `${unavailable}${source}`;
+  }
+
+  const facultyName = (id, emptyLabel, fallbackName) => {
+    if (id === null) return emptyLabel;
+    if (id === undefined) return 'Bilgi yok';
+    return facultyList.find((faculty) => String(faculty.id) === String(id))?.full_name
+      || fallbackName || `Danışman kaydı #${id}`;
+  };
+  const previous = facultyName(details.previous_faculty_id, 'Atanmamış');
+  const next = facultyName(details.faculty_id, 'Atanamadı', log.faculty_name);
+  let method = 'Yerleştirme biçimi arşiv kaydında bulunuyor.';
+  if (details.method === 'preference') {
+    const rank = Number.isFinite(details.preference_rank) ? ` (${details.preference_rank}. tercih)` : '';
+    const score = Number.isFinite(details.score)
+      ? ` Puan: ${details.score.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.` : '';
+    method = `Tercihiyle yerleşti${rank}.${score}`;
+  } else if (details.method === 'fallback') {
+    method = 'Boş kontenjandan yerleşti.';
+  } else if (details.method === 'unplaced') {
+    method = 'Atanamadı.';
+  }
+  return `Önceki danışman: ${previous}. Yeni danışman: ${next}. ${method}`;
+}
+
 const emptyUserForm = {
   full_name: '',
   email: '',
@@ -930,10 +981,10 @@ export default function AdminDashboard({ user, onUserUpdated }) {
               {logs.slice(0, 20).map((log) => (
                 <tr key={log.id}>
                   <td>{new Date(log.timestamp).toLocaleString('tr-TR')}</td>
-                  <td>{log.action}</td>
+                  <td>{REASSIGNMENT_ACTION_LABELS[log.action] || log.action}</td>
                   <td>{log.student_name || '-'}</td>
                   <td>{log.faculty_name || '-'}</td>
-                  <td>{log.details || '-'}</td>
+                  <td>{describeAssignmentLog(log, facultyList)}</td>
                 </tr>
               ))}
             </tbody>
