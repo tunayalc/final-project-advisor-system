@@ -10,15 +10,16 @@ const backendDir = path.join(repoRoot, 'backend');
 const tempDir = mkdtempSync(path.join(tmpdir(), 'danisman-atama-e2e-'));
 const dbPath = path.join(tempDir, 'danisman_atama.e2e.db');
 const isolatedEnv = { ...process.env };
-delete isolatedEnv.DATABASE_URL;
-delete isolatedEnv.SELECTION_BACKUP_DIR;
 
 const child = spawn(process.execPath, ['server.js'], {
   cwd: backendDir,
   env: {
     ...isolatedEnv,
+    NODE_ENV: 'test',
+    DATABASE_URL: '',
     PORT: '3000',
     DB_PATH: dbPath,
+    SELECTION_BACKUP_DIR: path.join(tempDir, 'selection-backups'),
     JWT_SECRET: 'playwright-e2e-secret-isolated-test-only',
     ADMIN_PASSWORD: 'AdminTest1234!',
     ADMIN_EMAIL: 'admin@ankara.edu.tr',

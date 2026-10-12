@@ -35,6 +35,18 @@ for (const status of ['accepted', 'rejected']) {
 const apiBaseUrl = 'http://127.0.0.1:3000/api';
 const studentPassword = 'Temp1234!';
 
+// The isolated server is shared, but each scenario needs its own student identities.
+test.afterEach(async ({ request }) => {
+  const admin = await getAdminToken(request);
+  const headers = { Authorization: `Bearer ${admin}` };
+  const response = await request.get(`${apiBaseUrl}/admin/users`, { headers });
+  expect(response.status()).toBe(200);
+  for (const user of (await response.json()).filter(user => user.role === 'ogrenci')) {
+    const removed = await request.delete(`${apiBaseUrl}/admin/users/${user.id}`, { headers });
+    expect(removed.status()).toBe(200);
+  }
+});
+
 test('email change verifies password, preserves student data and invalidates previous sessions', async ({ request }) => {
   const unique = Date.now();
   const original = `email.old.${unique}@example.invalid`;
@@ -99,7 +111,9 @@ test('faculty and administrators can update their own email', async ({ request }
 
 test('concurrent email updates cannot take the same address', async ({ request }) => {
   const unique = Date.now();
-  const students = await Promise.all([1, 2].map(i => registerStudent(request, { email: `race.${unique}.${i}@example.invalid`, fullName: 'Concurrent Email Student' })));
+  const students = await Promise.all(['First', 'Second'].map((name, i) => registerStudent(request, {
+    email: `race.${unique}.${i}@example.invalid`, fullName: `Concurrent ${name} Student`,
+  })));
   const address = `unique.${unique}@example.invalid`;
   const responses = await Promise.all(students.map(student => request.post(`${apiBaseUrl}/auth/change-email`, { headers: { Authorization: `Bearer ${student.token}` }, data: { new_email: address, current_password: studentPassword } })));
   expect(responses.map(r => r.status()).sort()).toEqual([200, 409]);
