@@ -18,7 +18,12 @@ async function readState(db) {
     f.current_quota, u.full_name AS faculty_name, d.name AS department_name
     FROM faculty f JOIN users u ON u.id = f.user_id JOIN departments d ON d.id = f.department_id ORDER BY f.id`).all();
   const preferences = await db.prepare('SELECT student_id, faculty_id, rank FROM preferences ORDER BY student_id, rank').all();
-  return { users, students, faculty, preferences };
+  const assignmentActions = "'SCORE_ASSIGN', 'FALLBACK_ASSIGN', 'FORCE_ASSIGN', 'REASSIGN_STUDENT'";
+  const lastAssignments = await db.prepare(`SELECT l.id, l.student_id, l.faculty_id, l.action, l.details
+    FROM assignment_logs l WHERE l.action IN (${assignmentActions}) AND l.id =
+    (SELECT MAX(previous.id) FROM assignment_logs previous WHERE previous.student_id = l.student_id
+      AND previous.action IN (${assignmentActions})) ORDER BY l.student_id`).all();
+  return { users, students, faculty, preferences, lastAssignments };
 }
 
 function validId(id) { return Number.isSafeInteger(id) && id > 0; }
@@ -91,7 +96,11 @@ async function selectPreferences(db, state, input = {}) {
     receipt_count: receiptCount, selected_events: selectedEvents } };
 }
 
-async function buildPreview(db, input) {
+async function buildPreview(db, input = {}) {
+  if (input.preserve_manual_assignments !== undefined && typeof input.preserve_manual_assignments !== 'boolean') {
+    throw new ReassignmentError('Elle yapılan atamaları koruma seçeneği doğru veya yanlış olmalıdır.');
+  }
+  const preserveManual = input.preserve_manual_assignments !== false;
   const state = await readState(db);
   const { preferences, source } = await selectPreferences(db, state, input);
   const students = state.students.filter(s => s.approval_status === 'approved');
@@ -99,8 +108,20 @@ async function buildPreview(db, input) {
   const facultyMap = new Map(state.faculty.map(f => [f.id, f]));
   const studentMap = new Map(students.map(s => [s.id, s]));
   const priorities = new Map(result.faculty.map(f => [f.id, f.priority]));
+  const manualStudentIds = new Set(state.lastAssignments.filter(log => {
+    if (!preserveManual) return false;
+    const student = studentMap.get(log.student_id);
+    if (!student?.is_assigned || student.assigned_faculty_id !== log.faculty_id || !facultyMap.has(log.faculty_id)) return false;
+    if (log.action === 'FORCE_ASSIGN') return true;
+    if (log.action !== 'REASSIGN_STUDENT') return false;
+    try { return JSON.parse(log.details).method === 'manual'; } catch { return false; }
+  }).map(log => log.student_id));
   const assignments = result.assignments.map(assignment => {
     const student = studentMap.get(assignment.student_id);
+    if (manualStudentIds.has(student.id)) {
+      assignment = { ...assignment, faculty_id: student.assigned_faculty_id, method: 'manual', score: null,
+        preference_rank: preferences.find(p => p.student_id === student.id && p.faculty_id === student.assigned_faculty_id)?.rank ?? null };
+    }
     return { ...assignment, student_name: student.student_name, student_email: student.student_email,
       gano: student.gano, department_id: student.department_id, department_name: student.department_name,
       previous_faculty_id: student.assigned_faculty_id, previous_faculty_name: facultyMap.get(student.assigned_faculty_id)?.faculty_name || null,
@@ -108,14 +129,24 @@ async function buildPreview(db, input) {
       changed: (student.assigned_faculty_id ?? null) !== assignment.faculty_id || Boolean(student.is_assigned) !== (assignment.faculty_id !== null) };
   }).sort((a, b) => a.department_id - b.department_id || (priorities.get(a.faculty_id) ?? Infinity) - (priorities.get(b.faculty_id) ?? Infinity) ||
     (a.method === 'preference' ? 0 : 1) - (b.method === 'preference' ? 0 : 1) || (b.score ?? -Infinity) - (a.score ?? -Infinity) || b.gano - a.gano || a.student_id - b.student_id);
-  const fingerprint = hash(JSON.stringify({ rule: 'quota-fill-order-v1', state, preferences, source }));
-  return { fingerprint, source, stats: { totalStudents: students.length,
+  const counts = new Map();
+  for (const assignment of assignments) {
+    if (assignment.faculty_id !== null) counts.set(assignment.faculty_id, (counts.get(assignment.faculty_id) || 0) + 1);
+  }
+  // A manually assigned inactive advisor also remains visible in the preview.
+  const previewFaculty = [...result.faculty];
+  for (const facultyId of counts.keys()) {
+    if (!previewFaculty.some(f => f.id === facultyId)) previewFaculty.push({ ...facultyMap.get(facultyId), priority: null });
+  }
+  const fingerprint = hash(JSON.stringify({ rule: 'quota-fill-order-v1', preserveManual, state, preferences, source }));
+  return { fingerprint, source, preserve_manual_assignments: preserveManual, stats: { totalStudents: students.length,
     placedByPreference: assignments.filter(a => a.method === 'preference').length,
     placedRandomly: assignments.filter(a => a.method === 'fallback').length,
+    preservedManual: assignments.filter(a => a.method === 'manual').length,
     unplaced: assignments.filter(a => a.method === 'unplaced').length,
     changed: assignments.filter(a => a.changed).length },
-  faculty: result.faculty.map(f => ({ faculty_id: f.id, faculty_name: f.faculty_name, department_id: f.department_id,
-    department_name: f.department_name, priority: f.priority, base_quota: f.base_quota, current_quota: f.current_quota,
+  faculty: previewFaculty.map(f => ({ faculty_id: f.id, faculty_name: f.faculty_name, department_id: f.department_id,
+    department_name: f.department_name, priority: f.priority, base_quota: Math.max(f.base_quota || 0, counts.get(f.id) || 0), current_quota: counts.get(f.id) || 0,
     provisional_fill_score: f.provisional_fill_score, provisional_fill_method: f.provisional_fill_method,
     provisional_filled: f.provisional_filled })), assignments };
 }
@@ -137,6 +168,8 @@ async function applyReassignment(db, input = {}, actorId = null) {
     const updateStudent = db.prepare('UPDATE students SET assigned_faculty_id = ?, is_assigned = ? WHERE id = ?');
     const log = db.prepare('INSERT INTO assignment_logs (student_id, faculty_id, action, details) VALUES (?, ?, ?, ?)');
     for (const assignment of preview.assignments) {
+      // Keep the original manual assignment and its audit entry intact.
+      if (assignment.method === 'manual') continue;
       await updateStudent.run(assignment.faculty_id, assignment.faculty_id === null ? 0 : 1, assignment.student_id);
       await log.run(assignment.student_id, assignment.faculty_id, 'REASSIGN_STUDENT', JSON.stringify({ run_id: runId,
         previous_faculty_id: assignment.previous_faculty_id, faculty_id: assignment.faculty_id,

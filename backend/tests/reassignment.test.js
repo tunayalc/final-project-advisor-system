@@ -182,6 +182,46 @@ test('failure during quota writes rolls back every assignment and audit log', as
   assert.deepEqual(await db.prepare('SELECT * FROM assignment_logs ORDER BY id').all(), logs);
 });
 
+test('manual advisor changes survive preview, apply and subsequent runs while other students are reassigned', async () => {
+  const protectedStudent = studentIds[0];
+  await db.prepare('UPDATE students SET is_assigned = 1, assigned_faculty_id = ? WHERE id = ?').run(teacherIds[1], protectedStudent);
+  await db.prepare('INSERT INTO assignment_logs (student_id, faculty_id, action, details) VALUES (?, ?, ?, ?)')
+    .run(protectedStudent, teacherIds[1], 'FORCE_ASSIGN', 'Manual advisor choice');
+  // Make a different student require a change so this is not a no-op preservation check.
+  await db.prepare('UPDATE students SET is_assigned = 0, assigned_faculty_id = NULL WHERE id = ?').run(studentIds[1]);
+  const protectedRecord = await db.prepare('SELECT * FROM students WHERE id = ?').get(protectedStudent);
+  const logsBefore = await db.prepare('SELECT * FROM assignment_logs ORDER BY id').all();
+  const preferencesBefore = await db.prepare('SELECT * FROM preferences ORDER BY id').all();
+  const preview = await previewReassignment(db);
+  const preserved = preview.assignments.find(a => a.student_id === protectedStudent);
+  assert.equal(preserved.faculty_id, teacherIds[1]);
+  assert.equal(preserved.method, 'manual');
+  assert.equal(preserved.changed, false);
+  assert.equal(preview.stats.preservedManual, 1);
+  assert(preview.assignments.find(a => a.student_id === studentIds[1]).changed);
+  const faculty = preview.faculty.find(f => f.faculty_id === teacherIds[1]);
+  assert.equal(faculty.current_quota, preview.assignments.filter(a => a.faculty_id === teacherIds[1]).length);
+  assert(faculty.base_quota >= faculty.current_quota);
+  await applyReassignment(db, { fingerprint: preview.fingerprint }, 1);
+  assert.deepEqual(await db.prepare('SELECT * FROM students WHERE id = ?').get(protectedStudent), protectedRecord);
+  assert.deepEqual(await db.prepare('SELECT * FROM preferences ORDER BY id').all(), preferencesBefore);
+  const logsAfter = await db.prepare('SELECT * FROM assignment_logs ORDER BY id').all();
+  assert.deepEqual(logsAfter.slice(0, logsBefore.length), logsBefore);
+  assert(logsAfter.slice(logsBefore.length).every(l => l.student_id !== protectedStudent));
+  assert.equal((await previewReassignment(db)).assignments.find(a => a.student_id === protectedStudent).method, 'manual');
+  const override = await previewReassignment(db, { preserve_manual_assignments: false });
+  assert.equal(override.assignments.find(a => a.student_id === protectedStudent).faculty_id, teacherIds[0]);
+  assert.equal(override.stats.preservedManual, 0);
+});
+
+test('manual changes after preview invalidate apply even if the selected advisor stays the same', async () => {
+  const preview = await previewReassignment(db);
+  await db.prepare('INSERT INTO assignment_logs (student_id, faculty_id, action, details) VALUES (?, ?, ?, ?)')
+    .run(studentIds[0], teacherIds[1], 'FORCE_ASSIGN', 'Renewed manual advisor choice');
+  assert.equal((await request('apply', { fingerprint: preview.fingerprint })).status, 409);
+  assert.equal((await request('preview', { preserve_manual_assignments: 'false' })).status, 400);
+});
+
 after(async () => {
   await new Promise(resolve => server.close(resolve));
   await db.close();

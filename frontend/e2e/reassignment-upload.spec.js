@@ -51,6 +51,27 @@ test('valid JSONL enables preview, sends selected source, and a new source inval
   await expect(previewButton).toBeEnabled();
 });
 
+test('preview clearly identifies protected manual assignments and excludes them from changes', async ({ page }) => {
+  const panel = page.getByRole('region', { name: 'Bütün öğrencileri yeniden yerleştir' });
+  await page.route('**/api/admin/reassignment/preview', async (route) => {
+    await route.fulfill({ json: {
+      fingerprint: 'protected-preview', source: { name: 'Güncel kayıtlı tercihler', mode: 'current' },
+      stats: { totalStudents: 1, placedByPreference: 0, placedRandomly: 0, preservedManual: 1, unplaced: 0, changed: 0 },
+      faculty: [{ faculty_id: 1, faculty_name: 'Elle Seçilen Danışman', department_name: 'Test Bölümü', priority: 1, base_quota: 1, current_quota: 1 }],
+      assignments: [{ student_id: 1, student_name: 'Korunan Öğrenci', student_email: 'protected@example.invalid', department_name: 'Test Bölümü', gano: 3,
+        faculty_name: 'Elle Seçilen Danışman', previous_faculty_name: 'Elle Seçilen Danışman', method: 'manual', preference_rank: 2, score: null, changed: false }],
+    } });
+  });
+  await panel.getByRole('button', { name: 'Dağıtım önizlemesini hazırla' }).click();
+  await expect(panel.locator('.stat-card').filter({ hasText: 'Elle yapılan ataması korunan' })).toContainText('1');
+  await expect(panel).toContainText('Öğrencilerin danışmanlarında değişiklik yok.');
+  await panel.getByText('Bütün öğrencilerin yeni yerleşimlerini göster (1)', { exact: true }).click();
+  const row = panel.getByRole('row').filter({ hasText: 'Korunan Öğrenci' });
+  await expect(row).toContainText('Elle yapılan atama korundu');
+  await expect(row.getByRole('cell').nth(4)).toHaveText('2');
+  await expect(row.getByRole('cell').nth(5)).toHaveText('—');
+});
+
 for (const scenario of [
   { name: 'empty', filename: 'bos.jsonl', buffer: () => Buffer.from(' \n'), error: 'Seçilen dosya boş.' },
   { name: 'oversized', filename: 'buyuk.jsonl', buffer: () => Buffer.alloc(5 * 1024 * 1024 + 1, 'a'), error: 'en fazla 5 MB' },

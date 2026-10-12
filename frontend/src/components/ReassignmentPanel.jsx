@@ -6,6 +6,7 @@ const METHOD_LABELS = {
   preference: 'Tercihiyle yerleşti',
   fallback: 'Boş kontenjandan yerleşti',
   unplaced: 'Atanamadı',
+  manual: 'Elle yapılan atama korundu',
 };
 
 const formatNumber = (value) => value == null ? '—' : Number(value).toLocaleString('tr-TR', {
@@ -135,6 +136,7 @@ export default function ReassignmentPanel({ dataVersion, disabled, onApplied, on
         İndirdiğiniz tercih geçmişini seçebilirsiniz. Dosyadaki her güncel öğrencinin son kayıtlı
         tercihleri kullanılır. Dosya seçmezseniz sistemde kayıtlı tercihler kullanılır.
       </p>
+      <p className="muted-copy">Yönetici tarafından elle değiştirilmiş danışman atamaları korunur. Yeni dağıtım diğer öğrencilerin atamalarını günceller.</p>
       <div className="stack-form">
         <label className="field-block">
           <span>Tercih geçmişi dosyası (isteğe bağlı, JSONL)</span>
@@ -168,6 +170,7 @@ export default function ReassignmentPanel({ dataVersion, disabled, onApplied, on
           <article className="stat-card"><span>Dağıtıma alınan öğrenci</span><strong>{preview.stats.totalStudents}</strong></article>
           <article className="stat-card"><span>Tercihiyle yerleşen</span><strong>{preview.stats.placedByPreference}</strong></article>
           <article className="stat-card"><span>Boş kontenjandan yerleşen</span><strong>{preview.stats.placedRandomly}</strong></article>
+          <article className="stat-card"><span>Elle yapılan ataması korunan</span><strong>{preview.stats.preservedManual || 0}</strong></article>
           <article className="stat-card"><span>Atanamayan</span><strong>{preview.stats.unplaced}</strong></article>
           <article className="stat-card"><span>Danışmanı değişen</span><strong>{preview.stats.changed}</strong></article>
         </div>
@@ -178,7 +181,7 @@ export default function ReassignmentPanel({ dataVersion, disabled, onApplied, on
             <caption className="visually-hidden">Bölüm içindeki öncelik sırasına göre yeni danışman kontenjanları</caption>
             <thead><tr><th scope="col">Bölüm içi sıra</th><th scope="col">Danışman</th><th scope="col">Bölüm</th><th scope="col">Yeni kontenjan</th><th scope="col">Yerleşen</th></tr></thead>
             <tbody>{preview.faculty.map((faculty) => <tr key={faculty.faculty_id}>
-              <td>{faculty.priority}</td><td><strong>{faculty.faculty_name}</strong></td><td>{faculty.department_name}</td>
+              <td>{faculty.priority ?? '—'}</td><td><strong>{faculty.faculty_name}</strong></td><td>{faculty.department_name}</td>
               <td>{faculty.base_quota}</td><td>{faculty.current_quota}</td>
             </tr>)}</tbody>
           </table>
@@ -207,14 +210,14 @@ export default function ReassignmentPanel({ dataVersion, disabled, onApplied, on
               <tbody>{preview.assignments.map((assignment) => <tr key={assignment.student_id}>
                 <td><strong>{assignment.student_name}</strong><span>{assignment.student_email}</span></td><td>{assignment.department_name}</td>
                 <td>{formatNumber(assignment.gano)}</td><td>{assignment.faculty_name || 'Atanamadı'}</td>
-                <td>{assignment.method === 'preference' ? assignment.preference_rank : '—'}</td>
+                <td>{assignment.preference_rank ?? '—'}</td>
                 <td>{assignment.method === 'preference' ? formatNumber(assignment.score) : '—'}</td>
                 <td>{METHOD_LABELS[assignment.method]}</td>
               </tr>)}</tbody>
             </table>
           </div>
         </details>
-        <p className="muted-copy">Uyguladığınızda mevcut atamalar bu dağıtımla güncellenir. Tercih geçmişi ve önceki atamalar işlem geçmişinde saklanır.</p>
+        <p className="muted-copy">Uyguladığınızda elle değiştirilmiş atamalar korunur; diğer atamalar bu dağıtımla güncellenir. Tercih geçmişi ve önceki atamalar işlem geçmişinde saklanır.</p>
         <div className="action-row">
           <button type="button" className="btn btn-primary" onClick={applyPreview} disabled={busy}>
             <Check size={16} />{operation === 'apply' ? 'Dağıtım uygulanıyor' : 'Bu dağıtımı uygula'}
